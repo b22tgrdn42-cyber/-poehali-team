@@ -1,76 +1,380 @@
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Команда, поехали!</title><style>
-:root{--red:#b91c1c;--sand:#edb861;--cream:#fff8e8;--ink:#171717;--muted:#6b6258}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#f6d99c,#fff8e8);color:var(--ink)}button,input,select,textarea{font:inherit}.top{position:sticky;top:0;z-index:5;background:#fffaf0eF;backdrop-filter:blur(10px);border-bottom:4px solid var(--red);display:flex;align-items:center;gap:14px;padding:10px 4vw}.logo{width:64px;height:64px;object-fit:contain}.brand b{font-size:20px}.brand small{display:block;color:var(--muted)}.wrap{max-width:1180px;margin:auto;padding:22px}.card{background:#fffaf0;border:1px solid #ead7b3;border-radius:18px;padding:18px;box-shadow:0 8px 24px #5b341015;margin-bottom:16px}.hero{background:var(--sand);border:0}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.tabs button,.btn{border:0;border-radius:12px;padding:11px 14px;background:#171717;color:white;cursor:pointer}.tabs button.active,.btn.red{background:var(--red)}.btn.light{background:#fff;color:#171717;border:1px solid #d7c29d}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.field{width:100%;padding:12px;border:1px solid #d8c49f;border-radius:10px;background:white;margin:5px 0 10px}.avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#eee}.newsimg{width:100%;max-height:330px;object-fit:cover;border-radius:14px}.pill{display:inline-block;background:#171717;color:white;padding:4px 9px;border-radius:999px;font-size:12px}.muted{color:var(--muted)}.score{font-size:34px;font-weight:800;color:var(--red)}.hidden{display:none!important}.danger{background:#7f1d1d}.ok{background:#166534}.listitem{padding:12px 0;border-bottom:1px solid #ead7b3}.login{max-width:520px;margin:5vh auto}.loginlogo{width:220px;display:block;margin:auto}.bottom{display:none}.toast{position:fixed;right:16px;bottom:16px;background:#171717;color:white;padding:12px 16px;border-radius:12px;z-index:10}@media(max-width:720px){.wrap{padding:12px 12px 80px}.grid,.grid3{grid-template-columns:1fr}.top{padding:8px 12px}.logo{width:50px;height:50px}.brand b{font-size:16px}.bottom{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:8;background:#171717;padding:8px;justify-content:space-around}.bottom button{background:none;color:white;border:0;font-size:12px}.card{border-radius:14px}.tabs{overflow:auto;flex-wrap:nowrap}.tabs button{white-space:nowrap}}
+:root{
+  --red:#b7161b;
+  --red-2:#d12228;
+  --sand:#e8b35b;
+  --sand-2:#f5d495;
+  --cream:#fff8eb;
+  --paper:#fffdf8;
+  --ink:#121212;
+  --ink-2:#232323;
+  --muted:#7b6c5d;
+  --line:#ead9bd;
+  --green:#1f7a4d;
+  --shadow:0 20px 60px rgba(69,40,8,.12);
+  --shadow-soft:0 10px 30px rgba(69,40,8,.08);
+  --radius-xl:28px;
+  --radius-lg:22px;
+  --radius-md:16px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  min-height:100vh;
+  color:var(--ink);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(232,179,91,.34), transparent 30%),
+    radial-gradient(circle at 90% 0%, rgba(183,22,27,.13), transparent 28%),
+    linear-gradient(180deg,#fffaf1 0%,#f7ead3 48%,#f1ddbb 100%);
+  -webkit-font-smoothing:antialiased;
+}
+body:before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);
+  background-size:32px 32px;
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.3),transparent 70%);
+}
+button,input,select,textarea{font:inherit}
+button{border:0}
+a{color:inherit}
+.top{
+  position:sticky;
+  top:0;
+  z-index:50;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:14px max(18px,4vw);
+  background:rgba(255,250,241,.78);
+  border-bottom:1px solid rgba(234,217,189,.9);
+  backdrop-filter:blur(18px) saturate(150%);
+  box-shadow:0 8px 30px rgba(73,47,14,.06);
+}
+.logo{
+  width:72px;height:72px;object-fit:contain;
+  filter:drop-shadow(0 8px 18px rgba(125,63,12,.16));
+}
+.brand{min-width:0}
+.brand b{
+  display:block;
+  font-size:22px;
+  line-height:1;
+  letter-spacing:.01em;
+  font-weight:900;
+}
+.brand small{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:13px;
+}
+.wrap{
+  max-width:1280px;
+  margin:0 auto;
+  padding:28px 24px 80px;
+}
+.login{
+  max-width:560px;
+  margin:5vh auto 0;
+  text-align:left;
+}
+.loginlogo{
+  width:220px;
+  display:block;
+  margin:0 auto 16px;
+  filter:drop-shadow(0 16px 35px rgba(135,70,10,.16));
+}
+.card{
+  position:relative;
+  background:linear-gradient(180deg,rgba(255,253,248,.97),rgba(255,249,238,.95));
+  border:1px solid rgba(231,208,169,.85);
+  border-radius:var(--radius-lg);
+  padding:22px;
+  box-shadow:var(--shadow-soft);
+  margin-bottom:16px;
+  overflow:hidden;
+}
+.card:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(145deg,rgba(255,255,255,.52),transparent 32%);
+}
+.card>*{position:relative}
+.hero{
+  background:
+    radial-gradient(circle at 82% 15%,rgba(255,255,255,.52),transparent 20%),
+    linear-gradient(135deg,var(--sand) 0%,#efc776 58%,#f8dfaa 100%);
+  border:1px solid rgba(170,105,15,.12);
+  box-shadow:0 24px 60px rgba(136,79,9,.14);
+}
+.hero h2{margin-top:0;font-size:clamp(28px,4vw,46px);letter-spacing:-.03em}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+}
+.grid3{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px;
+}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tabs{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:6px 0 20px;
+  padding:6px;
+  border-radius:18px;
+  background:rgba(255,253,248,.66);
+  border:1px solid rgba(231,208,169,.8);
+  box-shadow:0 8px 30px rgba(79,48,8,.05);
+  backdrop-filter:blur(14px);
+}
+.tabs button{
+  border-radius:13px;
+  padding:11px 14px;
+  color:#4a3a2e;
+  background:transparent;
+  cursor:pointer;
+  font-weight:800;
+  transition:.22s ease;
+}
+.tabs button:hover{background:#fff7e8;transform:translateY(-1px)}
+.tabs button.active{
+  color:#fff;
+  background:linear-gradient(135deg,var(--red),var(--red-2));
+  box-shadow:0 10px 24px rgba(183,22,27,.24);
+}
+.btn{
+  appearance:none;
+  border-radius:13px;
+  padding:11px 15px;
+  cursor:pointer;
+  font-weight:850;
+  color:#fff;
+  background:linear-gradient(135deg,var(--ink),#303030);
+  box-shadow:0 8px 18px rgba(0,0,0,.12);
+  transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.btn:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(0,0,0,.16)}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn.red{background:linear-gradient(135deg,var(--red),var(--red-2));box-shadow:0 10px 24px rgba(183,22,27,.24)}
+.btn.light{background:#fff9ef;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.btn.danger,.danger{background:linear-gradient(135deg,#7f1d1d,#991b1b)}
+.btn.ok,.ok{background:linear-gradient(135deg,#1f7a4d,#2a9560)}
+.field{
+  width:100%;
+  padding:13px 14px;
+  border:1px solid #dcc8a5;
+  border-radius:13px;
+  background:rgba(255,255,255,.92);
+  color:var(--ink);
+  outline:none;
+  margin:6px 0 12px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
+  transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease;
+}
+.field:focus{
+  border-color:#c88b32;
+  box-shadow:0 0 0 4px rgba(232,179,91,.18);
+  transform:translateY(-1px);
+}
+textarea.field{min-height:110px;resize:vertical}
+.avatar{
+  width:64px;height:64px;
+  border-radius:20px;
+  object-fit:cover;
+  background:linear-gradient(135deg,#f3d8a6,#fff);
+  border:2px solid rgba(255,255,255,.85);
+  box-shadow:0 10px 24px rgba(80,48,10,.12);
+}
+.newsimg{
+  width:100%;
+  max-height:360px;
+  object-fit:cover;
+  border-radius:18px;
+  margin-bottom:14px;
+  box-shadow:0 14px 30px rgba(55,33,7,.12);
+}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background:rgba(18,18,18,.92);
+  color:#fff;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+}
+.muted{color:var(--muted)}
+.score{
+  font-size:38px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:-.04em;
+  color:var(--red);
+}
+.listitem{
+  padding:14px 0;
+  border-bottom:1px solid rgba(232,213,181,.9);
+}
+.listitem:last-child{border-bottom:0}
+.toast{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:10000;
+  max-width:min(420px,calc(100vw - 36px));
+  padding:13px 16px;
+  border-radius:14px;
+  color:#fff;
+  background:rgba(18,18,18,.95);
+  box-shadow:0 18px 50px rgba(0,0,0,.22);
+  backdrop-filter:blur(10px);
+}
+.supervisor-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:850;
+  color:#fff;
+  background:linear-gradient(135deg,#222,#3a3a3a);
+}
+.home-tasks{
+  background:
+    radial-gradient(circle at 90% 10%,rgba(183,22,27,.12),transparent 22%),
+    linear-gradient(135deg,#fffaf0,#ffe8b6);
+  border:1px solid rgba(183,22,27,.16);
+}
+.home-task{
+  background:rgba(255,255,255,.84);
+  border:1px solid rgba(225,199,157,.75);
+  border-radius:16px;
+  padding:15px;
+  margin-top:10px;
+  box-shadow:0 8px 18px rgba(72,40,5,.06);
+}
+.notify-card{
+  background:
+    radial-gradient(circle at 80% 20%,rgba(232,179,91,.24),transparent 28%),
+    linear-gradient(135deg,#171717,#2a2a2a);
+  color:#fff;
+  border:0;
+}
+.notify-card .muted{color:#d8cbb9}
+.notify-card .btn{background:linear-gradient(135deg,var(--sand),#f4cf88);color:#171717;box-shadow:none}
+.task-personal{
+  border-left:4px solid var(--red);
+  padding-left:16px;
+  position:relative;
+}
+.task-personal:after{
+  content:"ЛИЧНОЕ";
+  position:absolute;
+  right:0;top:0;
+  padding:5px 9px;
+  font-size:10px;
+  font-weight:900;
+  color:#fff;
+  background:var(--red);
+  border-radius:0 12px 0 12px;
+}
+.hidden{display:none!important}
 
-/* UI motion upgrade */
-.view-transition{animation:sectionIn .34s cubic-bezier(.2,.8,.2,1)}
-@keyframes sectionIn{
-  0%{opacity:0;transform:translateY(10px) scale(.985)}
-  100%{opacity:1;transform:none}
+/* Premium transitions */
+#app{position:relative;transform-origin:50% 20%}
+#app.page-enter{animation:pageEnter .48s cubic-bezier(.16,1,.3,1) both}
+@keyframes pageEnter{
+  0%{opacity:0;transform:translateY(18px) scale(.985);filter:blur(6px)}
+  100%{opacity:1;transform:none;filter:none}
 }
-.card{animation:cardRise .38s both}
-.card:nth-of-type(2){animation-delay:.04s}.card:nth-of-type(3){animation-delay:.08s}.card:nth-of-type(4){animation-delay:.12s}
-@keyframes cardRise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-.tabs button{transition:transform .18s ease,background-color .18s ease,box-shadow .18s ease}
-.tabs button.active{transform:translateY(-1px);box-shadow:0 7px 18px #b91c1c33}
-.tabs button:active,.btn:active{transform:scale(.97)}
-.launchPulse{animation:launchPulse .45s ease}
-@keyframes launchPulse{
-  0%{transform:scale(.96);opacity:.5}
-  55%{transform:scale(1.02);opacity:1}
-  100%{transform:scale(1)}
+.card{animation:cardEnter .45s cubic-bezier(.16,1,.3,1) both}
+.card:nth-of-type(2){animation-delay:.035s}
+.card:nth-of-type(3){animation-delay:.07s}
+.card:nth-of-type(4){animation-delay:.105s}
+@keyframes cardEnter{from{opacity:0;transform:translateY(16px) scale(.99)}to{opacity:1;transform:none}}
+.nav-flare{position:fixed;inset:0;z-index:9000;pointer-events:none;overflow:hidden}
+.nav-flare:before{
+  content:"";
+  position:absolute;top:0;bottom:0;left:-35%;
+  width:28%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),rgba(232,179,91,.25),transparent);
+  filter:blur(6px);
+  transform:skewX(-18deg);
+  animation:sweep .48s ease-out forwards;
 }
+@keyframes sweep{to{left:120%;opacity:0}}
 .fireworks-layer{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
-.spark{
-  position:absolute;width:8px;height:8px;border-radius:50%;
-  background:var(--spark,#fff);
-  box-shadow:0 0 12px var(--spark,#fff);
-  animation:sparkFly 900ms ease-out forwards;
-}
-@keyframes sparkFly{
-  0%{transform:translate(0,0) scale(1);opacity:1}
-  100%{transform:translate(var(--dx),var(--dy)) scale(.15);opacity:0}
-}
-.confetti{
-  position:absolute;width:8px;height:14px;border-radius:2px;
-  background:var(--c,#fff);
-  animation:confettiFall 1200ms cubic-bezier(.2,.7,.2,1) forwards;
-}
-@keyframes confettiFall{
-  0%{transform:translate(0,-10px) rotate(0);opacity:1}
-  100%{transform:translate(var(--x),110vh) rotate(720deg);opacity:0}
-}
+.spark{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--spark,#fff);box-shadow:0 0 14px var(--spark,#fff);animation:sparkFly 900ms ease-out forwards}
+@keyframes sparkFly{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.15);opacity:0}}
+.confetti{position:absolute;width:8px;height:14px;border-radius:2px;background:var(--c,#fff);animation:confettiFall 1200ms cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes confettiFall{0%{transform:translate(0,-10px) rotate(0);opacity:1}100%{transform:translate(var(--x),110vh) rotate(720deg);opacity:0}}
 .points-pop{
   position:fixed;left:50%;top:22%;transform:translate(-50%,-50%);
-  z-index:10000;background:#171717;color:#fff;border:3px solid #edb861;
-  padding:14px 22px;border-radius:999px;font-weight:900;font-size:22px;
-  box-shadow:0 14px 40px #0005;
+  z-index:10000;
+  padding:14px 22px;
+  border-radius:999px;
+  color:#fff;
+  background:linear-gradient(135deg,#171717,#2a2a2a);
+  border:2px solid var(--sand);
+  font-weight:950;
+  font-size:22px;
+  box-shadow:0 18px 50px rgba(0,0,0,.28);
   animation:pointsPop 1.2s ease forwards;
 }
-@keyframes pointsPop{
-  0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}
-  25%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}
-  70%{opacity:1;transform:translate(-50%,-58%) scale(1)}
-  100%{opacity:0;transform:translate(-50%,-85%) scale(.92)}
+@keyframes pointsPop{0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}70%{opacity:1;transform:translate(-50%,-58%) scale(1)}100%{opacity:0;transform:translate(-50%,-85%) scale(.92)}}
+@media(max-width:760px){
+  .top{padding:10px 12px}
+  .logo{width:54px;height:54px}
+  .brand b{font-size:17px}
+  .brand small{display:none}
+  .wrap{padding:14px 12px 88px}
+  .grid,.grid3{grid-template-columns:1fr}
+  .card{padding:17px;border-radius:18px}
+  .tabs{
+    position:sticky;
+    top:76px;
+    z-index:30;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    margin:0 -4px 14px;
+    padding:5px;
+    scrollbar-width:none;
+  }
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{white-space:nowrap;flex:0 0 auto}
+  .score{font-size:32px}
+  .avatar{width:58px;height:58px;border-radius:18px}
+  .hero h2{font-size:32px}
 }
-@media (prefers-reduced-motion: reduce){
-  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+@media(max-width:420px){
+  .brand b{font-size:15px}
+  .logo{width:48px;height:48px}
+  .top .btn.light{padding:9px 10px}
 }
-
-/* Cinematic navigation */
-#app{position:relative}
-#app.page-exit{animation:pageExit .16s ease both}
-#app.page-enter{animation:pageEnter .44s cubic-bezier(.16,1,.3,1) both}
-@keyframes pageExit{to{opacity:0;transform:translateX(-18px) scale(.992);filter:blur(2px)}}
-@keyframes pageEnter{from{opacity:0;transform:translateX(28px) scale(.975);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
-.nav-flare{position:fixed;inset:0;z-index:9000;pointer-events:none;overflow:hidden}
-.nav-flare:before{content:"";position:absolute;left:-30%;top:38%;width:35%;height:5px;background:linear-gradient(90deg,transparent,#fff8,#edb861,#b91c1c,transparent);box-shadow:0 0 20px #edb861;animation:flareSweep .48s ease-out forwards;transform:skewX(-20deg)}
-@keyframes flareSweep{to{left:115%;width:55%;opacity:0}}
-.card{transition:transform .25s ease,box-shadow .25s ease}
-.card:hover{transform:translateY(-3px);box-shadow:0 15px 34px #5b341025}
-.task-personal{border-left:5px solid var(--red);position:relative;overflow:hidden}
-.task-personal:after{content:"ЛИЧНОЕ";position:absolute;right:-28px;top:12px;background:var(--red);color:#fff;padding:5px 32px;transform:rotate(34deg);font-size:10px;font-weight:900}
-.supervisor-badge{background:#222;color:#fff;padding:5px 9px;border-radius:999px;font-size:12px}
-</style></head><body><header class="top"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА, ПОЕХАЛИ!</b><small>Геймификация и внутренние новости</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.001ms!important;
+    scroll-behavior:auto!important
+  }
+}
+</style></head><body><header class="top"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Внутренняя платформа команды</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
 const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null;
 function animateSection(){
  const a=document.querySelector('#app');if(!a)return;
@@ -117,12 +421,45 @@ const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']
 async function api(path,opt={}){opt.headers={...(opt.headers||{}),'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})};let r=await fetch(A+path,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Ошибка');return j}function toast(t){let d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2200)}function logout(){localStorage.clear();token='';role='';login()}
 function file64(inp,cb){let f=inp.files[0];if(!f)return cb(null);if(f.size>900000)return toast('Фото должно быть меньше 900 КБ');let r=new FileReader;r.onload=()=>cb(r.result);r.readAsDataURL(f)}
 async function login(){role='';$('#who').innerHTML='';let em=await api('public/employees');$('#app').innerHTML=`<div class="login card"><img class="loginlogo" src="/assets/logo.png"><h2>Вход в систему</h2><label>Сотрудник</label><select id="emp" class="field"><option value="">Выберите себя</option>${em.map(e=>`<option value="${e.id}">${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id="pin" class="field" type="password" inputmode="numeric" placeholder="Индивидуальный PIN"><button class="btn red" onclick="empLogin()">Войти сотрудником</button><hr><h3>Управляющий</h3><input id="mpin" class="field" type="password" inputmode="numeric" placeholder="PIN управляющего"><button class="btn" onclick="mgrLogin()">Кабинет управляющего</button></div>`}
+
+function b64ToUint8Array(base64String){
+  const padding='='.repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64),out=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+  return out;
+}
+async function pushState(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return {supported:false};
+  const reg=await navigator.serviceWorker.register('/sw.js');
+  const sub=await reg.pushManager.getSubscription();
+  return {supported:true,permission:Notification.permission,subscribed:!!sub};
+}
+async function enablePush(){
+  try{
+    const key=await api('push/key');
+    if(!key.publicKey)return toast('Уведомления пока не настроены на сервере');
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted')return toast('Разрешение на уведомления не предоставлено');
+    const reg=await navigator.serviceWorker.register('/sw.js');
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint8Array(key.publicKey)});
+    await api('push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON()})});
+    toast('Уведомления включены');
+    if(role==='employee')employee();
+  }catch(e){toast('Не удалось включить уведомления: '+e.message)}
+}
 async function empLogin(){try{let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+$('#emp').value,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;fireworks('login');if(role==='supervisor')supervisor();else employee()}catch(e){toast(e.message)}}async function mgrLogin(){try{let j=await api('login/manager',{method:'POST',body:JSON.stringify({pin:$('#mpin').value})});token=j.token;role='manager';localStorage.token=token;localStorage.role=role;manager()}catch(e){toast(e.message)}}
-let etab='home';async function employee(){try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div><div class="grid"><div class="card"><h3>Последние новости</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>Мои достижения</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,news:`<h2>Новости</h2>${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}`,tasks:`<h2>Задания</h2><div class=card><h3>Мои индивидуальные задания</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>Общие задания</h2>${state.tasks.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div>`).join('')}`,prizes:`<h2>Призы</h2>${state.prizes.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div>`).join('')}`,competition:`<h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,rating:`<h2>Рейтинг команды</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,profile:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*"><button class="btn red" onclick="savePhoto()">Сохранить фото</button><h3>История баллов</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home','Главная'],['news','Новости'],['tasks','Задания'],['prizes','Призы'],['competition','Конкурс'],['rating','Рейтинг'],['profile','Профиль']].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection()}
+let etab='home';async function employee(){try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
+<div class="card home-tasks"><div class="row"><div><h2 style="margin:0">Мои индивидуальные задания</h2><div class="muted">Новые задания появляются здесь сразу после входа</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">Все задания</button></div>
+${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):'<p>Активных индивидуальных заданий сейчас нет.</p>'}
+</div>
+<div id="pushHomeCard" class="card notify-card"><h3>🔔 Уведомления о новых заданиях</h3><p class="muted">Разрешите уведомления — и новое индивидуальное задание появится на устройстве даже когда сайт закрыт.</p><button class="btn" onclick="enablePush()">Включить уведомления</button><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
+<div class="grid"><div class="card"><h3>Последние новости</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>Мои достижения</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,news:`<h2>Новости</h2>${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}`,tasks:`<h2>Задания</h2><div class=card><h3>Мои индивидуальные задания</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>Общие задания</h2>${state.tasks.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div>`).join('')}`,prizes:`<h2>Призы</h2>${state.prizes.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div>`).join('')}`,competition:`<h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,rating:`<h2>Рейтинг команды</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,profile:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*"><button class="btn red" onclick="savePhoto()">Сохранить фото</button><h3>История баллов</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home','Главная'],['news','Новости'],['tasks','Задания'],['prizes','Призы'],['competition','Конкурс'],['rating','Рейтинг'],['profile','Профиль']].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();setTimeout(async()=>{if(etab!=='home')return;const el=$('#pushStatus');if(!el)return;try{const s=await pushState();if(!s.supported){el.textContent='Это устройство/браузер не поддерживает Web Push.';return}if(s.subscribed&&s.permission==='granted'){el.textContent='✓ Уведомления включены';const c=$('#pushHomeCard');if(c)c.style.opacity='.82'}else if(s.permission==='denied')el.textContent='Уведомления запрещены в настройках браузера.';else el.textContent='Уведомления ещё не включены.'}catch{el.textContent='Не удалось проверить статус уведомлений.'}},100)}
 async function submitIndividual(id){await api('individual-task/submit',{method:'POST',body:JSON.stringify({id,comment:$('#ic'+id)?.value||''})});toast('Задание отправлено на проверку');employee()}
 function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div><span class=pill>${esc(n.category)}</span>${n.pinned?' 📌':''}</div><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}function savePhoto(){file64($('#pfile'),async p=>{if(!p)return;await api('me/photo',{method:'POST',body:JSON.stringify({photo:p})});toast('Фото сохранено');employee()})}
 let mtab='employees';async function manager(){try{state=await api('admin/state');$('#who').innerHTML=`<b>Управляющий</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:empAdmin(),tasks:crudList('Задания',state.tasks,'task'),prizes:crudList('Призы',state.prizes,'prize'),achievements:achAdmin(),news:newsAdmin(),competition:competitionAdmin(),individual:individualAdmin(),history:`<div class=card><h2>История баллов</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`,settings:`<div class=card><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees','Сотрудники'],['tasks','Задания'],['prizes','Призы'],['achievements','Достижения'],['news','Новости'],['competition','Конкурс'],['individual','Индивидуальные задания'],['history','История'],['settings','Настройки']].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection()}
-function empAdmin(){return `<div class=card><h2>Сотрудники и управляющий персонал</h2><div class=grid3><input id=en class=field placeholder="Имя"><select id=ep class=field><option>Официант</option><option>Бармен</option><option>Администратор</option><option>Старший смены</option><option>Управляющий</option><option>Стажёр</option><option>Другое</option></select><input id=epin class=field placeholder="Индивидуальный PIN"></div><div class=grid><label>Уровень доступа<select id=ear class=field><option value="employee">Сотрудник</option><option value="supervisor">Наблюдатель / руководитель</option></select></label><label style="padding-top:14px"><input id=etm type=checkbox checked> Показывать как участника команды (рейтинг, конкурс)</label></div><button class="btn red" onclick="addEmp()">Добавить</button></div>${state.employees.map(e=>`<div class=card><div class=row><img class=avatar src="${e.photo||'/assets/logo.png'}"><div><b>${esc(e.name)}</b><br><small>${esc(e.position)} · ${e.active?'Активен':'Заблокирован'} · ${e.team_member?'Участник команды':'Не участвует в рейтинге'}</small><br>${e.access_role==='supervisor'?'<span class=supervisor-badge>Доступ наблюдателя</span>':''}</div><div class=score style="margin-left:auto">${e.points}</div></div><div class=grid><div><input id="d${e.id}" class=field type=number placeholder="Баллы (+/-)"><input id="r${e.id}" class=field placeholder="Причина"><button class=btn onclick="points(${e.id})">Изменить баллы</button></div><div><input id="p${e.id}" class=field placeholder="Новый PIN"><select id="ar${e.id}" class=field><option value="employee" ${e.access_role!=='supervisor'?'selected':''}>Сотрудник</option><option value="supervisor" ${e.access_role==='supervisor'?'selected':''}>Наблюдатель / руководитель</option></select><label><input id="tm${e.id}" type=checkbox ${e.team_member?'checked':''}> Участник команды</label><br><button class=btn onclick="saveEmpMeta(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active})">Сохранить роль</button> <button class=btn onclick="resetPin(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active},'${e.access_role}',${e.team_member})">Сменить PIN</button> <button class="btn ${e.active?'danger':'ok'}" onclick="toggleEmp(${e.id},'${esc(e.name)}','${esc(e.position)}',${!e.active},'${e.access_role}',${e.team_member})">${e.active?'Заблокировать':'Разблокировать'}</button> <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button></div></div></div>`).join('')}`}
+function empAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Сотрудники и управляющий персонал</h2><p class="muted" style="margin-top:0">Роли, доступы, участие в рейтинге и персональные PIN-коды.</p><div class=grid3><input id=en class=field placeholder="Имя"><select id=ep class=field><option>Официант</option><option>Бармен</option><option>Администратор</option><option>Старший смены</option><option>Управляющий</option><option>Стажёр</option><option>Другое</option></select><input id=epin class=field placeholder="Индивидуальный PIN"></div><div class=grid><label>Уровень доступа<select id=ear class=field><option value="employee">Сотрудник</option><option value="supervisor">Наблюдатель / руководитель</option></select></label><label style="padding-top:14px"><input id=etm type=checkbox checked> Показывать как участника команды (рейтинг, конкурс)</label></div><button class="btn red" onclick="addEmp()">Добавить</button></div>${state.employees.map(e=>`<div class=card><div class=row><img class=avatar src="${e.photo||'/assets/logo.png'}"><div><b>${esc(e.name)}</b><br><small>${esc(e.position)} · ${e.active?'Активен':'Заблокирован'} · ${e.team_member?'Участник команды':'Не участвует в рейтинге'}</small><br>${e.access_role==='supervisor'?'<span class=supervisor-badge>Доступ наблюдателя</span>':''}</div><div class=score style="margin-left:auto">${e.points}</div></div><div class=grid><div><input id="d${e.id}" class=field type=number placeholder="Баллы (+/-)"><input id="r${e.id}" class=field placeholder="Причина"><button class=btn onclick="points(${e.id})">Изменить баллы</button></div><div><input id="p${e.id}" class=field placeholder="Новый PIN"><select id="ar${e.id}" class=field><option value="employee" ${e.access_role!=='supervisor'?'selected':''}>Сотрудник</option><option value="supervisor" ${e.access_role==='supervisor'?'selected':''}>Наблюдатель / руководитель</option></select><label><input id="tm${e.id}" type=checkbox ${e.team_member?'checked':''}> Участник команды</label><br><button class=btn onclick="saveEmpMeta(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active})">Сохранить роль</button> <button class=btn onclick="resetPin(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active},'${e.access_role}',${e.team_member})">Сменить PIN</button> <button class="btn ${e.active?'danger':'ok'}" onclick="toggleEmp(${e.id},'${esc(e.name)}','${esc(e.position)}',${!e.active},'${e.access_role}',${e.team_member})">${e.active?'Заблокировать':'Разблокировать'}</button> <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button></div></div></div>`).join('')}`}
 async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked})});toast('Сотрудник добавлен');manager()}
 async function points(id){let delta=+$('#d'+id).value;await api('admin/points',{method:'POST',body:JSON.stringify({employee_id:id,delta,reason:$('#r'+id).value})});pointCelebration(delta);manager()}
 async function saveEmpMeta(id,name,position,active){await api('admin/employees',{method:'PUT',body:JSON.stringify({id,name,position,active,access_role:$('#ar'+id).value,team_member:$('#tm'+id).checked})});toast('Настройки сотрудника сохранены');manager()}
@@ -132,7 +469,7 @@ function crudList(title,arr,type){let isT=type==='task';return `<div class=card>
 async function createItem(t){let b={title:$('#ct').value,description:$('#cd').value,active:true};b[t==='task'?'points':'cost']=+$('#cv').value;await api('admin/'+(t==='task'?'tasks':'prizes'),{method:'POST',body:JSON.stringify(b)});manager()}
 function achAdmin(){return `<div class=card><h2>Достижения</h2><input id=ai class=field placeholder="Значок, например ★"><input id=at class=field placeholder="Название"><input id=ad class=field placeholder="Описание"><button class="btn red" onclick="addAch()">Добавить</button></div>${state.achievements.map(a=>`<div class=card>${esc(a.icon)} <b>${esc(a.title)}</b> — ${esc(a.description)}<div class=row><select id="ae${a.id}" class=field style="flex:1">${state.employees.map(e=>`<option value=${e.id}>${esc(e.name)}</option>`).join('')}</select><button class=btn onclick="assignAch(${a.id})">Назначить</button><button class="btn danger" onclick="del('achievements',${a.id})">Удалить</button></div></div>`).join('')}`}
 async function addAch(){await api('admin/achievements',{method:'POST',body:JSON.stringify({icon:$('#ai').value,title:$('#at').value,description:$('#ad').value})});manager()}async function assignAch(a){await api('admin/achievement/assign',{method:'POST',body:JSON.stringify({achievement_id:a,employee_id:+$('#ae'+a).value})});toast('Достижение назначено')}
-function individualAdmin(){return `<div class=card><h2>Назначить индивидуальное задание</h2><select id=ie class=field>${state.employees.filter(e=>e.active).map(e=>`<option value=${e.id}>${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id=it class=field placeholder="Название"><textarea id=idsc class=field placeholder="Описание"></textarea><div class=grid><input id=ipts class=field type=number placeholder="Баллы"><input id=idue class=field type=date></div><button class="btn red" onclick="addIndividual()">Назначить</button></div>${(state.individualTasks||[]).map(t=>`<div class="card task-personal"><b>${esc(t.employee_name)} — ${esc(t.title)}</b><p>${esc(t.description)}</p><span class=pill>+${t.points}</span> ${t.due_date?`<small>до ${new Date(t.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${t.status}${t.employee_comment?`<br><i>Комментарий сотрудника: ${esc(t.employee_comment)}</i>`:''}</p>${t.status==='submitted'?`<button class="btn red" onclick="approveIndividual(${t.id})">Подтвердить и начислить</button>`:''} <button class="btn danger" onclick="deleteIndividual(${t.id})">Удалить</button></div>`).join('')}`}
+function individualAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Назначить индивидуальное задание</h2><p class="muted" style="margin-top:0">Персональная задача с дедлайном и бонусными баллами.</p><select id=ie class=field>${state.employees.filter(e=>e.active).map(e=>`<option value=${e.id}>${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id=it class=field placeholder="Название"><textarea id=idsc class=field placeholder="Описание"></textarea><div class=grid><input id=ipts class=field type=number placeholder="Баллы"><input id=idue class=field type=date></div><button class="btn red" onclick="addIndividual()">Назначить</button></div>${(state.individualTasks||[]).map(t=>`<div class="card task-personal"><b>${esc(t.employee_name)} — ${esc(t.title)}</b><p>${esc(t.description)}</p><span class=pill>+${t.points}</span> ${t.due_date?`<small>до ${new Date(t.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${t.status}${t.employee_comment?`<br><i>Комментарий сотрудника: ${esc(t.employee_comment)}</i>`:''}</p>${t.status==='submitted'?`<button class="btn red" onclick="approveIndividual(${t.id})">Подтвердить и начислить</button>`:''} <button class="btn danger" onclick="deleteIndividual(${t.id})">Удалить</button></div>`).join('')}`}
 async function addIndividual(){await api('admin/individual-tasks',{method:'POST',body:JSON.stringify({employee_id:+$('#ie').value,title:$('#it').value,description:$('#idsc').value,points:+$('#ipts').value,due_date:$('#idue').value||null})});toast('Индивидуальное задание назначено');manager()}
 async function approveIndividual(id){let r=await api('admin/individual-tasks/approve',{method:'POST',body:JSON.stringify({id})});pointCelebration(r.points);toast('Задание подтверждено, баллы начислены');manager()}
 async function deleteIndividual(id){if(!confirm('Удалить индивидуальное задание?'))return;await api('admin/individual-tasks',{method:'DELETE',body:JSON.stringify({id})});manager()}
@@ -141,12 +478,12 @@ async function saveCompetition(){await api('admin/competition/settings',{method:
 async function addCompetitionTask(){await api('admin/competition/tasks',{method:'POST',body:JSON.stringify({title:$('#cot').value,description:$('#cod').value,points:+$('#cop').value})});manager()}
 async function delCompetitionTask(id){if(!confirm('Удалить задание?'))return;await api('admin/competition/tasks',{method:'DELETE',body:JSON.stringify({id})});manager()}
 async function awardCompetition(){let s=$('#cotask'),o=s.options[s.selectedIndex],pts=+$('#copts').value||+(o?.dataset?.p||0),reason=$('#coreason').value||(o&&o.value?o.textContent:'Бонус конкурса');if(!pts)return toast('Укажите баллы');await api('admin/competition/award',{method:'POST',body:JSON.stringify({employee_id:+$('#coe').value,task_id:+s.value||null,points:pts,reason})});pointCelebration(pts);toast('Баллы начислены');manager()}
-function newsAdmin(){return `<div class=card><h2>Новая публикация</h2><input id=nt class=field placeholder="Заголовок"><select id=nc class=field><option>Важно</option><option>Мероприятие</option><option>Новинка</option><option>Обучение</option><option>Для команды</option></select><textarea id=nb class=field placeholder="Текст новости"></textarea><label>Дата мероприятия (необязательно)</label><input id=nd class=field type=date><label>Фото</label><input id=nimg class=field type=file accept="image/*"><div class=row><label><input id=np type=checkbox> Закрепить</label><label><input id=na type=checkbox> Требовать «Ознакомился»</label></div><br><button class="btn red" onclick="addNews()">Опубликовать</button></div>${state.news.map(n=>`<div class=card>${n.image?`<img class=newsimg src="${n.image}">`:''}<span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p><small>Ознакомились: ${n.read_count}</small><br><button class="btn danger" onclick="del('news',${n.id})">Удалить</button></div>`).join('')}`}
+function newsAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Новая публикация</h2><p class="muted" style="margin-top:0">Новости, объявления и важная информация для команды.</p><input id=nt class=field placeholder="Заголовок"><select id=nc class=field><option>Важно</option><option>Мероприятие</option><option>Новинка</option><option>Обучение</option><option>Для команды</option></select><textarea id=nb class=field placeholder="Текст новости"></textarea><label>Дата мероприятия (необязательно)</label><input id=nd class=field type=date><label>Фото</label><input id=nimg class=field type=file accept="image/*"><div class=row><label><input id=np type=checkbox> Закрепить</label><label><input id=na type=checkbox> Требовать «Ознакомился»</label></div><br><button class="btn red" onclick="addNews()">Опубликовать</button></div>${state.news.map(n=>`<div class=card>${n.image?`<img class=newsimg src="${n.image}">`:''}<span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p><small>Ознакомились: ${n.read_count}</small><br><button class="btn danger" onclick="del('news',${n.id})">Удалить</button></div>`).join('')}`}
 function addNews(){file64($('#nimg'),async p=>{await api('admin/news',{method:'POST',body:JSON.stringify({title:$('#nt').value,category:$('#nc').value,body:$('#nb').value,event_date:$('#nd').value||null,image:p,pinned:$('#np').checked,requires_ack:$('#na').checked,active:true})});toast('Новость опубликована');manager()})}
 async function del(kind,id){if(!confirm('Удалить?'))return;await api('admin/'+kind,{method:'DELETE',body:JSON.stringify({id})});manager()}async function saveSettings(){await api('admin/settings',{method:'POST',body:JSON.stringify({season:$('#season').value,level_step:+$('#levelstep').value,manager_pin:$('#newmpin').value||null})});toast('Настройки сохранены');manager()}
 
 async function supervisor(){try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
 function renderSupervisor(){let team=state.employees.filter(e=>e.team_member),others=state.employees.filter(e=>!e.team_member);$('#app').innerHTML=`<div class="card hero"><h2>Панель руководителя</h2><p>Просмотр прогресса команды без доступа к начислению баллов и изменению настроек.</p></div><div class=grid><div class=card><h3>Команда</h3>${team.map((e,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${e.photo||'/assets/logo.png'}"><span>${esc(e.name)}<br><small>${esc(e.position)}</small></span><b style="margin-left:auto">${e.points}</b></div>`).join('')}</div><div class=card><h3>Текущие задания</h3>${state.pending.map(t=>`<div class=listitem><b>${esc(t.employee_name)}</b> — ${esc(t.title)}<br><small>${t.status==='submitted'?'На проверке':'Назначено'}${t.due_date?' · до '+new Date(t.due_date).toLocaleDateString('ru'):''}</small></div>`).join('')||'Нет активных заданий'}</div></div><div class=grid><div class=card><h3>Последние достижения</h3>${state.achievements.slice(0,30).map(a=>{let e=state.employees.find(x=>x.id===a.employee_id);return `<div class=listitem>${esc(a.icon)} <b>${esc(e?.name||'')}</b> — ${esc(a.title)}</div>`}).join('')||'Пока нет достижений'}</div><div class=card><h3>Конкурс</h3>${state.competition?state.competition.board.map((x,i)=>`<div class=listitem>${i+1}. <b>${esc(x.name)}</b> — ${x.score}</div>`).join(''):'Нет активного конкурса'}${others.length?`<hr><small>Не участвуют в рейтинге: ${others.map(x=>esc(x.name)).join(', ')}</small>`:''}</div></div>`;animateSection()}
 
-(async()=>{if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else if(token&&role==='manager')manager();else login()})();
+(async()=>{const q=new URLSearchParams(location.search);if(q.get('open')==='tasks')etab='tasks';if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else if(token&&role==='manager')manager();else login()})();
 </script></body></html>

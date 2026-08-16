@@ -1,8 +1,27 @@
 const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const webpush = require('web-push');
 const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
+  webpush.setVapidDetails('mailto:admin@poehali-team.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
+}
+async function sendPushToEmployee(employeeId,payload){
+  if(!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  const subs=await sql`SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE employee_id=${employeeId}`;
+  for(const s of subs){
+    try{
+      await webpush.sendNotification({endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},JSON.stringify(payload),{TTL:3600});
+    }catch(e){
+      if(e.statusCode===404 || e.statusCode===410){
+        await sql`DELETE FROM push_subscriptions WHERE endpoint=${s.endpoint}`;
+      }else console.error('push error',e.message);
+    }
+  }
+}
 
 async function init(){
  await sql`CREATE TABLE IF NOT EXISTS settings (id int primary key default 1, manager_pin_hash text not null, season text default 'Сезон команды', level_step int default 100)`;
@@ -33,6 +52,14 @@ async function init(){
    submitted_at timestamptz,
    completed_at timestamptz
  )`;
+ await sql`CREATE TABLE IF NOT EXISTS push_subscriptions (
+   id serial primary key,
+   employee_id int references employees(id) on delete cascade,
+   endpoint text unique not null,
+   p256dh text not null,
+   auth text not null,
+   created_at timestamptz default now()
+ )`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -55,7 +82,21 @@ module.exports=async(req,res)=>{
   if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,access_role,team_member FROM employees WHERE active=true ORDER BY name`)}
   if(req.method==='POST'&&path==='login/employee'){const b=await body(req); const rows=await sql`SELECT * FROM employees WHERE id=${b.id} AND active=true`; if(!rows.length||!(await bcrypt.compare(String(b.pin||''),rows[0].pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:(rows[0].access_role==='supervisor'?'supervisor':'employee'),id:rows[0].id}),access_role:rows[0].access_role||'employee'})}
   if(req.method==='POST'&&path==='login/manager'){const b=await body(req); const s=(await sql`SELECT manager_pin_hash FROM settings WHERE id=1`)[0]; if(!(await bcrypt.compare(String(b.pin||''),s.manager_pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:'manager'})})}
+  if(req.method==='GET'&&path==='push/key'){return ok(res,{publicKey:VAPID_PUBLIC_KEY})}
   if(!u) return ok(res,{error:'Требуется вход'},401);
+
+  if(req.method==='POST'&&path==='push/subscribe'&&(u.role==='employee'||u.role==='supervisor')){
+    const b=await body(req),s=b.subscription||{};
+    if(!s.endpoint||!s.keys?.p256dh||!s.keys?.auth)return ok(res,{error:'Некорректная подписка'},400);
+    await sql`INSERT INTO push_subscriptions(employee_id,endpoint,p256dh,auth)
+      VALUES(${u.id},${s.endpoint},${s.keys.p256dh},${s.keys.auth})
+      ON CONFLICT(endpoint) DO UPDATE SET employee_id=${u.id},p256dh=${s.keys.p256dh},auth=${s.keys.auth}`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='POST'&&path==='push/unsubscribe'&&(u.role==='employee'||u.role==='supervisor')){
+    const b=await body(req); if(b.endpoint)await sql`DELETE FROM push_subscriptions WHERE endpoint=${b.endpoint}`; return ok(res,{ok:true})
+  }
+
 
   if(req.method==='POST'&&path==='individual-task/submit'&&(u.role==='employee'||u.role==='supervisor')){
     const b=await body(req);
@@ -105,8 +146,14 @@ module.exports=async(req,res)=>{
   if(req.method==='DELETE'&&path==='admin/news'){await sql`DELETE FROM news WHERE id=${b.id}`;return ok(res,{ok:true})}
 
   if(req.method==='POST'&&path==='admin/individual-tasks'){
-    await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null})`;
-    return ok(res,{ok:true})
+    const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null}) RETURNING id`;
+    await sendPushToEmployee(b.employee_id,{
+      title:'Новое индивидуальное задание 🚀',
+      body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),
+      url:'/?open=tasks',
+      tag:'individual-task-'+r[0].id
+    });
+    return ok(res,{ok:true,id:r[0].id})
   }
   if(req.method==='PUT'&&path==='admin/individual-tasks'){
     await sql`UPDATE individual_tasks SET title=${b.title},description=${b.description||''},points=${Number(b.points)||0},due_date=${b.due_date||null},status=${b.status||'assigned'} WHERE id=${b.id}`;
