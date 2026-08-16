@@ -12,6 +12,10 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/maintenance",
+      "schedule": "30 2 * * *"
+    },
+    {
       "path": "/api/cron/birthdays",
       "schedule": "0 7 * * *"
     }

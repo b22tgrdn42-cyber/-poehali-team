@@ -6,8 +6,10 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const APP_VERSION = '9.0.0';
+const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'https://komanda-poehali.vercel.app',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
 }
 async function sendPushToEmployee(employeeId,payload){
   const result={configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:0,sent:0,failed:0,errors:[]};
@@ -34,7 +36,7 @@ async function sendPushToEmployee(employeeId,payload){
   return result;
 }
 async function broadcastPush(payload){
-  const users=await sql`SELECT id FROM employees WHERE active=true`;
+  const users=await sql`SELECT id FROM employees WHERE active=true AND archived_at IS NULL`;
   const summary={
     configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),
     recipients:users.length,
@@ -188,6 +190,37 @@ async function init(){
    sent_at timestamptz default now(),
    primary key(employee_id,year,days_before)
  )`;
+
+ await sql`CREATE TABLE IF NOT EXISTS audit_log (
+   id bigserial primary key,
+   actor_employee_id int references employees(id) on delete set null,
+   action text not null,
+   entity_type text,
+   entity_id text,
+   details jsonb default '{}'::jsonb,
+   created_at timestamptz default now()
+ )`;
+ await sql`CREATE TABLE IF NOT EXISTS system_status (
+   key text primary key,
+   value jsonb default '{}'::jsonb,
+   updated_at timestamptz default now()
+ )`;
+ await sql`CREATE TABLE IF NOT EXISTS backup_snapshots (
+   id bigserial primary key,
+   created_by int references employees(id) on delete set null,
+   label text default '',
+   payload jsonb not null,
+   created_at timestamptz default now()
+ )`;
+
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE prizes ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE achievements ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE news ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE individual_tasks ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE competition_tasks ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
+ await sql`ALTER TABLE chats ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -228,6 +261,77 @@ async function messagePush(chatId,senderId,messageId,body){
   }
 }
 
+
+async function logAction(actorId,action,entityType=null,entityId=null,details={}){
+  try{
+    await sql`INSERT INTO audit_log(actor_employee_id,action,entity_type,entity_id,details)
+      VALUES(${actorId||null},${action},${entityType},${entityId==null?null:String(entityId)},${JSON.stringify(details)}::jsonb)`;
+  }catch(e){console.error('audit log error',e.message)}
+}
+async function setSystemStatus(key,value){
+  await sql`INSERT INTO system_status(key,value,updated_at) VALUES(${key},${JSON.stringify(value)}::jsonb,now())
+    ON CONFLICT(key) DO UPDATE SET value=${JSON.stringify(value)}::jsonb,updated_at=now()`;
+}
+async function createSnapshot(actorId,label=''){
+  const [
+    employees,tasks,prizes,achievements,employeeAchievements,history,news,newsReads,
+    competitions,competitionTasks,competitionScores,individualTasks,chats,chatMembers,
+    messages,messageReactions,settings,uiTexts,uiReplacements,uiBlocks,uiRemoved
+  ]=await Promise.all([
+    sql`SELECT * FROM employees`,
+    sql`SELECT * FROM tasks`,
+    sql`SELECT * FROM prizes`,
+    sql`SELECT * FROM achievements`,
+    sql`SELECT * FROM employee_achievements`,
+    sql`SELECT * FROM history`,
+    sql`SELECT * FROM news`,
+    sql`SELECT * FROM news_reads`,
+    sql`SELECT * FROM competitions`,
+    sql`SELECT * FROM competition_tasks`,
+    sql`SELECT * FROM competition_scores`,
+    sql`SELECT * FROM individual_tasks`,
+    sql`SELECT * FROM chats`,
+    sql`SELECT * FROM chat_members`,
+    sql`SELECT id,chat_id,sender_id,body,reply_to,edited_at,deleted,created_at FROM messages`,
+    sql`SELECT * FROM message_reactions`,
+    sql`SELECT * FROM settings`,
+    sql`SELECT * FROM ui_texts`,
+    sql`SELECT * FROM ui_replacements`,
+    sql`SELECT * FROM ui_blocks`,
+    sql`SELECT * FROM ui_removed_elements`
+  ]);
+  const payload={
+    version:APP_VERSION,created_at:new Date().toISOString(),
+    employees,tasks,prizes,achievements,employeeAchievements,history,news,newsReads,
+    competitions,competitionTasks,competitionScores,individualTasks,chats,chatMembers,
+    messages,messageReactions,settings,uiTexts,uiReplacements,uiBlocks,uiRemoved
+  };
+  const r=await sql`INSERT INTO backup_snapshots(created_by,label,payload) VALUES(${actorId||null},${label},${JSON.stringify(payload)}::jsonb) RETURNING id,created_at`;
+  return r[0];
+}
+async function cleanInvalidPushSubscriptions(){
+  const rows=await sql`SELECT id,employee_id,endpoint,p256dh,auth FROM push_subscriptions`;
+  let removed=0,checked=0;
+  if(!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY))return {checked:0,removed:0,configured:false};
+  for(const s of rows){
+    checked++;
+    try{
+      await webpush.sendNotification(
+        {endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},
+        JSON.stringify({title:'',body:'',tag:'maintenance-silent'}),
+        {TTL:0,urgency:'very-low',topic:'maintenance'}
+      );
+    }catch(e){
+      if(e.statusCode===404||e.statusCode===410){
+        await sql`DELETE FROM push_subscriptions WHERE id=${s.id}`;
+        removed++;
+      }
+      // 400/401/403 may be VAPID configuration problems; do not delete valid subscriptions.
+    }
+  }
+  return {checked,removed,configured:true};
+}
+
 async function employeePermissions(employeeId){
   const rows=await sql`SELECT can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${employeeId} AND active=true`;
   return rows[0]||{};
@@ -243,7 +347,7 @@ function hasAnyStaffPermission(p){
 module.exports=async(req,res)=>{
  try{
   await init(); const path=(req.query.path||'').toString(); const u=auth(req);
-  if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,birthday,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true ORDER BY name`)}
+  if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,birthday,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`)}
   if(req.method==='POST'&&path==='login/employee'){const b=await body(req); const rows=await sql`SELECT * FROM employees WHERE id=${b.id} AND active=true`; if(!rows.length||!(await bcrypt.compare(String(b.pin||''),rows[0].pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:(rows[0].access_role==='supervisor'?'supervisor':'employee'),id:rows[0].id}),access_role:rows[0].access_role||'employee'})}
   if(req.method==='POST'&&path==='login/manager'){
     return ok(res,{error:'Отдельный вход управляющего отключён. Войдите как сотрудник.'},410)
@@ -266,7 +370,7 @@ module.exports=async(req,res)=>{
 
     const now=new Date();
     const todayUTC=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));
-    const employees=await sql`SELECT id,name,birthday FROM employees WHERE active=true AND birthday IS NOT NULL`;
+    const employees=await sql`SELECT id,name,birthday FROM employees WHERE active=true AND archived_at IS NULL AND birthday IS NOT NULL`;
     const results=[];
 
     for(const emp of employees){
@@ -296,8 +400,25 @@ module.exports=async(req,res)=>{
         results.push({employee_id:emp.id,name:emp.name,days_before:daysBefore,push});
       }
     }
+    await setSystemStatus('birthday_cron',{checked:employees.length,notifications:results.length,last_run:new Date().toISOString()});
     return ok(res,{ok:true,checked:employees.length,notifications:results})
   }
+
+  if(req.method==='GET'&&path==='public/version'){
+    return ok(res,{version:APP_VERSION,environment:APP_ENV,time:new Date().toISOString()})
+  }
+
+  if(req.method==='GET'&&path==='cron/maintenance'){
+    const secret=process.env.CRON_SECRET;
+    if(secret && req.headers.authorization!==`Bearer ${secret}`)return ok(res,{error:'Unauthorized'},401);
+    const snapshot=await createSnapshot(null,'Автоматический ежедневный снимок');
+    await sql`DELETE FROM backup_snapshots WHERE id NOT IN (SELECT id FROM backup_snapshots ORDER BY created_at DESC LIMIT 14)`;
+    const pushCleanup={note:'404/410 subscriptions are removed during normal delivery'};
+    const result={snapshot_id:snapshot.id,push_cleanup:pushCleanup,version:APP_VERSION};
+    await setSystemStatus('maintenance_cron',result);
+    return ok(res,{ok:true,...result})
+  }
+
   if(!u) return ok(res,{error:'Требуется вход'},401);
   const b=await body(req);
   const employeeManager=(u.role==='employee'||u.role==='supervisor')&&u.id?await isEmployeeManager(u.id):false;
@@ -342,14 +463,14 @@ module.exports=async(req,res)=>{
 
   if(req.method==='GET'&&path==='messenger/state'&&(u.role==='employee'||u.role==='supervisor')){
     if(!(await messengerAllowed(u.id)))return ok(res,{error:'Доступ к мессенджеру не предоставлен'},403);
-    const people=await sql`SELECT id,name,position,photo,last_seen FROM employees WHERE active=true AND messenger_access=true AND id<>${u.id} ORDER BY name`;
+    const people=await sql`SELECT id,name,position,photo,last_seen FROM employees WHERE active=true AND archived_at IS NULL AND messenger_access=true AND id<>${u.id} ORDER BY name`;
     const chats=await sql`
       SELECT c.id,c.type,c.title,c.created_at,
         COALESCE((SELECT m.body FROM messages m WHERE m.chat_id=c.id AND m.deleted=false ORDER BY m.id DESC LIMIT 1),'') last_message,
         (SELECT m.created_at FROM messages m WHERE m.chat_id=c.id ORDER BY m.id DESC LIMIT 1) last_message_at,
         (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id AND m.created_at>cm.last_read_at AND m.sender_id<>${u.id}) unread
       FROM chats c JOIN chat_members cm ON cm.chat_id=c.id
-      WHERE cm.employee_id=${u.id}
+      WHERE cm.employee_id=${u.id} AND c.archived_at IS NULL
       ORDER BY COALESCE((SELECT max(m.created_at) FROM messages m WHERE m.chat_id=c.id),c.created_at) DESC`;
     for(const c of chats){
       const members=await sql`SELECT e.id,e.name,e.position,e.photo,e.last_seen FROM employees e JOIN chat_members cm ON cm.employee_id=e.id WHERE cm.chat_id=${c.id} ORDER BY e.name`;
@@ -488,19 +609,19 @@ module.exports=async(req,res)=>{
     const p=await employeePermissions(u.id);
     if(!hasAnyStaffPermission(p))return ok(res,{error:'Нет управленческих прав'},403);
     const out={permissions:p};
-    if(p.can_manage_tasks)out.tasks=await sql`SELECT * FROM tasks ORDER BY id DESC`;
-    if(p.can_assign_individual)out.individualTasks=await sql`SELECT i.*,e.name employee_name FROM individual_tasks i JOIN employees e ON e.id=i.employee_id ORDER BY i.id DESC`;
-    if(p.can_manage_news)out.news=await sql`SELECT * FROM news ORDER BY pinned DESC,id DESC`;
-    if(p.can_manage_prizes)out.prizes=await sql`SELECT * FROM prizes ORDER BY id DESC`;
-    if(p.can_manage_achievements)out.achievements=await sql`SELECT * FROM achievements ORDER BY id DESC`;
+    if(p.can_manage_tasks)out.tasks=await sql`SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY id DESC`;
+    if(p.can_assign_individual)out.individualTasks=await sql`SELECT i.*,e.name employee_name FROM individual_tasks i JOIN employees e ON e.id=i.employee_id WHERE i.archived_at IS NULL ORDER BY i.id DESC`;
+    if(p.can_manage_news)out.news=await sql`SELECT * FROM news WHERE archived_at IS NULL ORDER BY pinned DESC,id DESC`;
+    if(p.can_manage_prizes)out.prizes=await sql`SELECT * FROM prizes WHERE archived_at IS NULL ORDER BY id DESC`;
+    if(p.can_manage_achievements)out.achievements=await sql`SELECT * FROM achievements WHERE archived_at IS NULL ORDER BY id DESC`;
     if(p.can_manage_competition){
       out.competition=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null;
-      if(out.competition)out.competition.tasks=await sql`SELECT * FROM competition_tasks WHERE competition_id=${out.competition.id} ORDER BY id DESC`;
+      if(out.competition)out.competition.tasks=await sql`SELECT * FROM competition_tasks WHERE competition_id=${out.competition.id} AND archived_at IS NULL ORDER BY id DESC`;
     }
     if(p.can_manage_permissions){
-      out.employees=await sql`SELECT id,name,position,active,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY active DESC,name`;
+      out.employees=await sql`SELECT id,name,position,active,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE archived_at IS NULL ORDER BY active DESC,name`;
     }else{
-      out.employees=await sql`SELECT id,name,position,active FROM employees WHERE active=true ORDER BY name`;
+      out.employees=await sql`SELECT id,name,position,active FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
     }
     return ok(res,out)
   }
@@ -562,13 +683,13 @@ module.exports=async(req,res)=>{
   }
 
   if(req.method==='GET'&&path==='team'&&(u.role==='employee'||u.role==='supervisor')){
-    const rows=await sql`SELECT id,name,position,photo,birthday FROM employees WHERE active=true ORDER BY name`;
+    const rows=await sql`SELECT id,name,position,photo,birthday FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
     return ok(res,rows)
   }
   if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,birthday,points,photo,active,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
  const individualTasks=await sql`SELECT * FROM individual_tasks WHERE employee_id=${u.id} ORDER BY CASE status WHEN 'assigned' THEN 1 WHEN 'submitted' THEN 2 ELSE 3 END, due_date NULLS LAST, created_at DESC`;
  const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
- if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND active=true ORDER BY points,title`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; const mine=board.find(x=>x.id===u.id); competition={...comp,tasks:ct,board,my_score:mine?mine.score:0,my_place:board.findIndex(x=>x.id===u.id)+1};}
+ if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND active=true ORDER BY points,title`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.archived_at IS NULL AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; const mine=board.find(x=>x.id===u.id); competition={...comp,tasks:ct,board,my_score:mine?mine.score:0,my_place:board.findIndex(x=>x.id===u.id)+1};}
  return ok(res,{employee:e,news,tasks,individualTasks,prizes,ranking,achievements:ach,history:hist,competition})}
   if(req.method==='POST'&&path==='me/photo'&&(u.role==='employee'||u.role==='supervisor')){const b=await body(req); if((b.photo||'').length>4000000)return ok(res,{error:'Фото слишком большое после обработки'},400); await sql`UPDATE employees SET photo=${b.photo||null} WHERE id=${u.id}`; return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='news/ack'&&u.role==='employee'){const b=await body(req); await sql`INSERT INTO news_reads(news_id,employee_id) VALUES(${b.news_id},${u.id}) ON CONFLICT DO NOTHING`; return ok(res,{ok:true})}
@@ -579,7 +700,7 @@ module.exports=async(req,res)=>{
     const pending=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.status IN ('assigned','submitted') ORDER BY it.status DESC,it.due_date NULLS LAST`;
     const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null;
     let competition=null;
-    if(comp){const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`;competition={...comp,board};}
+    if(comp){const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.archived_at IS NULL AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`;competition={...comp,board};}
     return ok(res,{employees,achievements,pending,competition})
   }
 
@@ -597,7 +718,7 @@ module.exports=async(req,res)=>{
     return ok(res,{ok:true,id:c[0].id})
   }
   if(req.method==='GET'&&path==='admin/messenger'){
-    const users=await sql`SELECT id,name,position,photo,messenger_access,active,last_seen FROM employees ORDER BY name`;
+    const users=await sql`SELECT id,name,position,photo,messenger_access,active,last_seen FROM employees WHERE archived_at IS NULL ORDER BY name`;
     const chats=await sql`SELECT c.*, (SELECT count(*)::int FROM chat_members cm WHERE cm.chat_id=c.id) members_count, (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id) messages_count FROM chats c ORDER BY c.created_at DESC`;
     return ok(res,{users,chats})
   }
@@ -611,7 +732,9 @@ module.exports=async(req,res)=>{
     return ok(res,{ok:true,employee:saved})
   }
   if(req.method==='DELETE'&&path==='admin/messenger/chat'){
-    await sql`DELETE FROM chats WHERE id=${b.id}`; return ok(res,{ok:true})
+    await sql`UPDATE chats SET archived_at=now() WHERE id=${b.id}`;
+    await logAction(u.id,'archive','chat',b.id,{});
+    return ok(res,{ok:true,archived:true})
   }
 
 
@@ -681,11 +804,83 @@ module.exports=async(req,res)=>{
     if(b.key)await sql`DELETE FROM ui_texts WHERE key=${b.key}`;
     return ok(res,{ok:true})
   }
-if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,birthday,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
- if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} ORDER BY id`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; competition={...comp,tasks:ct,board};}
- const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
+
+  if(req.method==='GET'&&path==='admin/diagnostics'){
+    const dbStart=Date.now();
+    const db=(await sql`SELECT now() server_time`)[0];
+    const [empCount,pushCount,auditCount,backupCount,statuses]=await Promise.all([
+      sql`SELECT count(*)::int count FROM employees WHERE archived_at IS NULL`,
+      sql`SELECT count(*)::int count FROM push_subscriptions`,
+      sql`SELECT count(*)::int count FROM audit_log`,
+      sql`SELECT count(*)::int count FROM backup_snapshots`,
+      sql`SELECT key,value,updated_at FROM system_status ORDER BY key`
+    ]);
+    return ok(res,{
+      version:APP_VERSION,environment:APP_ENV,
+      database:{ok:true,latency_ms:Date.now()-dbStart,server_time:db.server_time},
+      push:{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:pushCount[0].count,subject:process.env.VAPID_SUBJECT?'configured':'default'},
+      counts:{employees:empCount[0].count,audit:auditCount[0].count,backups:backupCount[0].count},
+      cron:Object.fromEntries(statuses.map(x=>[x.key,{...x.value,updated_at:x.updated_at}]))
+    })
+  }
+
+  if(req.method==='GET'&&path==='admin/audit'){
+    return ok(res,await sql`SELECT a.*,e.name actor_name FROM audit_log a LEFT JOIN employees e ON e.id=a.actor_employee_id ORDER BY a.created_at DESC LIMIT 500`)
+  }
+
+  if(req.method==='GET'&&path==='admin/backups'){
+    return ok(res,await sql`SELECT id,label,created_by,created_at,octet_length(payload::text)::int bytes FROM backup_snapshots ORDER BY created_at DESC LIMIT 50`)
+  }
+  if(req.method==='POST'&&path==='admin/backups'){
+    const snap=await createSnapshot(u.id,b.label||'Ручной снимок');
+    await logAction(u.id,'backup.create','backup',snap.id,{label:b.label||''});
+    return ok(res,{ok:true,...snap})
+  }
+  if(req.method==='GET'&&path==='admin/backups/export'){
+    const id=Number(req.query.id);
+    const row=(await sql`SELECT id,label,payload,created_at FROM backup_snapshots WHERE id=${id}`)[0];
+    if(!row)return ok(res,{error:'Снимок не найден'},404);
+    return ok(res,row)
+  }
+  if(req.method==='DELETE'&&path==='admin/backups'){
+    await sql`DELETE FROM backup_snapshots WHERE id=${Number(b.id)}`;
+    await logAction(u.id,'backup.delete','backup',b.id,{});
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='GET'&&path==='admin/archive'){
+    const [employees,tasks,prizes,achievements,news,individual,competitionTasks,chats]=await Promise.all([
+      sql`SELECT id,name title,position subtitle,archived_at FROM employees WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`,
+      sql`SELECT id,title,description subtitle,archived_at FROM tasks WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`,
+      sql`SELECT id,title,description subtitle,archived_at FROM prizes WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`,
+      sql`SELECT id,title,description subtitle,archived_at FROM achievements WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`,
+      sql`SELECT id,title,body subtitle,archived_at FROM news WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`,
+      sql`SELECT i.id,i.title,e.name subtitle,i.archived_at FROM individual_tasks i LEFT JOIN employees e ON e.id=i.employee_id WHERE i.archived_at IS NOT NULL ORDER BY i.archived_at DESC`,
+      sql`SELECT id,title,description subtitle,archived_at FROM competition_tasks WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`,
+      sql`SELECT id,COALESCE(NULLIF(title,''),'Чат') title,type subtitle,archived_at FROM chats WHERE archived_at IS NOT NULL ORDER BY archived_at DESC`
+    ]);
+    return ok(res,{employees,tasks,prizes,achievements,news,individual,competitionTasks,chats})
+  }
+  if(req.method==='POST'&&path==='admin/archive/restore'){
+    const id=Number(b.id),kind=String(b.kind||'');
+    if(kind==='employees')await sql`UPDATE employees SET archived_at=NULL,active=true WHERE id=${id}`;
+    else if(kind==='tasks')await sql`UPDATE tasks SET archived_at=NULL,active=true WHERE id=${id}`;
+    else if(kind==='prizes')await sql`UPDATE prizes SET archived_at=NULL,active=true WHERE id=${id}`;
+    else if(kind==='achievements')await sql`UPDATE achievements SET archived_at=NULL WHERE id=${id}`;
+    else if(kind==='news')await sql`UPDATE news SET archived_at=NULL,active=true WHERE id=${id}`;
+    else if(kind==='individual')await sql`UPDATE individual_tasks SET archived_at=NULL WHERE id=${id}`;
+    else if(kind==='competitionTasks')await sql`UPDATE competition_tasks SET archived_at=NULL,active=true WHERE id=${id}`;
+    else if(kind==='chats')await sql`UPDATE chats SET archived_at=NULL WHERE id=${id}`;
+    else return ok(res,{error:'Неизвестный тип архива'},400);
+    await logAction(u.id,'archive.restore',kind,id,{});
+    return ok(res,{ok:true})
+  }
+
+if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,birthday,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n WHERE n.archived_at IS NULL ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
+ if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND archived_at IS NULL ORDER BY id`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.archived_at IS NULL AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; competition={...comp,tasks:ct,board};}
+ const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.archived_at IS NULL ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
  return ok(res,{employees,tasks,prizes,achievements,news,history,settings:settings[0],competition,individualTasks})}
-  if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,birthday,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${b.birthday||null},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;return ok(res,r[0])}
+  if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,birthday,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${b.birthday||null},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;await logAction(u.id,'employee.create','employee',r[0].id,{name:b.name,position:b.position});return ok(res,r[0])}
   if(req.method==='PUT'&&path==='admin/employees'){
     const existing=(await sql`SELECT * FROM employees WHERE id=${b.id}`)[0];
     if(!existing)return ok(res,{error:'Сотрудник не найден'},404);
@@ -707,10 +902,11 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       can_manage_achievements=${!!b.can_manage_achievements},
       can_manage_permissions=${!!b.can_manage_permissions}
       WHERE id=${b.id}`;
+    await logAction(u.id,'employee.update','employee',b.id,{name:b.name,position:b.position});
     return ok(res,{ok:true})
   }
-  if(req.method==='DELETE'&&path==='admin/employees'){await sql`DELETE FROM employees WHERE id=${b.id}`;return ok(res,{ok:true})}
-  if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;return ok(res,{ok:true})}
+  if(req.method==='DELETE'&&path==='admin/employees'){await sql`UPDATE employees SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','employee',b.id,{});return ok(res,{ok:true,archived:true})}
+  if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;await logAction(u.id,'points.change','employee',b.employee_id,{delta:Number(b.delta)||0,reason:b.reason||''});return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/tasks'){
     const r=await sql`INSERT INTO tasks(title,description,points,active,image) VALUES(${b.title},${b.description||''},${Number(b.points)||0},${b.active!==false},${b.image||null}) RETURNING id`;
     let push=null;
@@ -723,15 +919,16 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       });
       console.log('general task push',JSON.stringify(push));
     }
+    await logAction(u.id,'task.create','task',r[0].id,{title:b.title,points:Number(b.points)||0});
     return ok(res,{ok:true,id:r[0].id,push})
   }
   if(req.method==='PUT'&&path==='admin/tasks'){await sql`UPDATE tasks SET title=${b.title},description=${b.description||''},points=${Number(b.points)||0},active=${b.active!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
-  if(req.method==='DELETE'&&path==='admin/tasks'){await sql`DELETE FROM tasks WHERE id=${b.id}`;return ok(res,{ok:true})}
-  if(req.method==='POST'&&path==='admin/prizes'){await sql`INSERT INTO prizes(title,description,cost,active,image) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},${b.active!==false},${b.image||null})`;return ok(res,{ok:true})}
+  if(req.method==='DELETE'&&path==='admin/tasks'){await sql`UPDATE tasks SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','task',b.id,{});return ok(res,{ok:true,archived:true})}
+  if(req.method==='POST'&&path==='admin/prizes'){const pr=await sql`INSERT INTO prizes(title,description,cost,active,image) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},${b.active!==false},${b.image||null}) RETURNING id`;await logAction(u.id,'prize.create','prize',pr[0].id,{title:b.title});return ok(res,{ok:true,id:pr[0].id})}
   if(req.method==='PUT'&&path==='admin/prizes'){await sql`UPDATE prizes SET title=${b.title},description=${b.description||''},cost=${Number(b.cost)||0},active=${b.active!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
-  if(req.method==='DELETE'&&path==='admin/prizes'){await sql`DELETE FROM prizes WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='DELETE'&&path==='admin/prizes'){await sql`UPDATE prizes SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','prize',b.id,{});return ok(res,{ok:true,archived:true})}
   if(req.method==='POST'&&path==='admin/achievements'){await sql`INSERT INTO achievements(title,description,icon) VALUES(${b.title},${b.description||''},${b.icon||'★'})`;return ok(res,{ok:true})}
-  if(req.method==='DELETE'&&path==='admin/achievements'){await sql`DELETE FROM achievements WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='DELETE'&&path==='admin/achievements'){await sql`UPDATE achievements SET archived_at=now() WHERE id=${b.id}`;await logAction(u.id,'archive','achievement',b.id,{});return ok(res,{ok:true,archived:true})}
   if(req.method==='POST'&&path==='admin/achievement/assign'){await sql`INSERT INTO employee_achievements(employee_id,achievement_id) VALUES(${b.employee_id},${b.achievement_id}) ON CONFLICT DO NOTHING`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/news'){
     if((b.image||'').length>1400000)return ok(res,{error:'Фото слишком большое'},400);
@@ -746,10 +943,11 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       });
       console.log('news push',JSON.stringify(push));
     }
+    await logAction(u.id,'news.create','news',r[0].id,{title:b.title,category:b.category});
     return ok(res,{ok:true,id:r[0].id,push})
   }
   if(req.method==='PUT'&&path==='admin/news'){await sql`UPDATE news SET title=${b.title},body=${b.body||''},category=${b.category||'Важно'},event_date=${b.event_date||null},pinned=${!!b.pinned},requires_ack=${!!b.requires_ack},active=${b.active!==false},image=COALESCE(${b.image||null},image) WHERE id=${b.id}`;return ok(res,{ok:true})}
-  if(req.method==='DELETE'&&path==='admin/news'){await sql`DELETE FROM news WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='DELETE'&&path==='admin/news'){await sql`UPDATE news SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','news',b.id,{});return ok(res,{ok:true,archived:true})}
 
   if(req.method==='POST'&&path==='admin/individual-tasks'){
     const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date,image) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null},${b.image||null}) RETURNING id`;
@@ -760,6 +958,7 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       tag:'individual-task-'+r[0].id
     });
     console.log('individual task push',JSON.stringify(push));
+    await logAction(u.id,'individual_task.create','individual_task',r[0].id,{employee_id:b.employee_id,title:b.title});
     return ok(res,{ok:true,id:r[0].id,push})
   }
   if(req.method==='PUT'&&path==='admin/individual-tasks'){
@@ -777,7 +976,7 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
     return ok(res,{ok:true,points:t.points})
   }
   if(req.method==='DELETE'&&path==='admin/individual-tasks'){
-    await sql`DELETE FROM individual_tasks WHERE id=${b.id}`; return ok(res,{ok:true})
+    await sql`UPDATE individual_tasks SET archived_at=now() WHERE id=${b.id}`; await logAction(u.id,'archive','individual_task',b.id,{}); return ok(res,{ok:true,archived:true})
   }
   if(req.method==='POST'&&path==='admin/competition/settings'){
     let c=(await sql`SELECT id,active,title,description,starts_on,ends_on FROM competitions ORDER BY id DESC LIMIT 1`)[0];
@@ -804,9 +1003,9 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
     return ok(res,{ok:true,id,push})
   }
   if(req.method==='POST'&&path==='admin/competition/tasks'){const c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0]; await sql`INSERT INTO competition_tasks(competition_id,title,description,points,active) VALUES(${c.id},${b.title},${b.description||''},${Number(b.points)||0},true)`;return ok(res,{ok:true})}
-  if(req.method==='DELETE'&&path==='admin/competition/tasks'){await sql`DELETE FROM competition_tasks WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='DELETE'&&path==='admin/competition/tasks'){await sql`UPDATE competition_tasks SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','competition_task',b.id,{});return ok(res,{ok:true,archived:true})}
   if(req.method==='POST'&&path==='admin/competition/award'){const c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0]; const pts=Number(b.points)||0; await sql`INSERT INTO competition_scores(competition_id,employee_id,task_id,points,reason) VALUES(${c.id},${b.employee_id},${b.task_id||null},${pts},${b.reason||''})`; await sql`UPDATE employees SET points=points+${pts} WHERE id=${b.employee_id}`; await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${pts},${'Конкурс: '+(b.reason||'бонус')})`;return ok(res,{ok:true})}
-  if(req.method==='POST'&&path==='admin/settings'){if(b.manager_pin){const h=await bcrypt.hash(String(b.manager_pin),10);await sql`UPDATE settings SET manager_pin_hash=${h},season=${b.season||'Сезон команды'},level_step=${Number(b.level_step)||100} WHERE id=1`}else await sql`UPDATE settings SET season=${b.season||'Сезон команды'},level_step=${Number(b.level_step)||100} WHERE id=1`;return ok(res,{ok:true})}
+  if(req.method==='POST'&&path==='admin/settings'){await logAction(u.id,'settings.update','settings',1,{season:b.season,level_step:b.level_step});if(b.manager_pin){const h=await bcrypt.hash(String(b.manager_pin),10);await sql`UPDATE settings SET manager_pin_hash=${h},season=${b.season||'Сезон команды'},level_step=${Number(b.level_step)||100} WHERE id=1`}else await sql`UPDATE settings SET season=${b.season||'Сезон команды'},level_step=${Number(b.level_step)||100} WHERE id=1`;return ok(res,{ok:true})}
   return ok(res,{error:'Маршрут не найден'},404);
- }catch(e){console.error(e);return ok(res,{error:'Ошибка сервера',detail:String(e.message||e)},500)}
+ }catch(e){const requestId=req.headers['x-vercel-id']||req.headers['x-request-id']||'';console.error('request error',requestId,e);return ok(res,{error:'Ошибка сервера',request_id:requestId||undefined},500)}
 }
