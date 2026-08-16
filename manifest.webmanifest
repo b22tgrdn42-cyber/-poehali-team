@@ -1,12 +1,18 @@
 {
-  "name": "Команда, поехали!",
+  "name": "Команда · Поехали!",
   "short_name": "Поехали!",
-  "description": "Геймификация и мотивация сотрудников",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f4e1bd",
-  "theme_color": "#b8181d",
+  "background_color": "#fff8eb",
+  "theme_color": "#b7161b",
+  "description": "Новости, конкурсы, задания и достижения команды",
   "icons": [
-    {"src":"/assets/logo.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {
+      "src": "/assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }

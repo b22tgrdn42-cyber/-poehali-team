@@ -10,18 +10,49 @@ if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails('mailto:admin@poehali-team.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
 }
 async function sendPushToEmployee(employeeId,payload){
-  if(!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  const result={configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:0,sent:0,failed:0,errors:[]};
+  if(!result.configured)return result;
   const subs=await sql`SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE employee_id=${employeeId}`;
+  result.subscriptions=subs.length;
   for(const s of subs){
     try{
-      await webpush.sendNotification({endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},JSON.stringify(payload),{TTL:3600});
+      await webpush.sendNotification(
+        {endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},
+        JSON.stringify(payload),
+        {TTL:3600,urgency:'high'}
+      );
+      result.sent++;
     }catch(e){
-      if(e.statusCode===404 || e.statusCode===410){
+      result.failed++;
+      result.errors.push(String(e.statusCode||'')+': '+String(e.body||e.message||'push error').slice(0,240));
+      if(e.statusCode===404||e.statusCode===410){
         await sql`DELETE FROM push_subscriptions WHERE endpoint=${s.endpoint}`;
-      }else console.error('push error',e.message);
+      }
+      console.error('push error',e.statusCode,e.body||e.message);
     }
   }
+  return result;
 }
+async function broadcastPush(payload){
+  const users=await sql`SELECT id FROM employees WHERE active=true`;
+  const summary={
+    configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),
+    recipients:users.length,
+    subscriptions:0,
+    sent:0,
+    failed:0,
+    errors:[]
+  };
+  for(const u of users){
+    const r=await sendPushToEmployee(u.id,payload);
+    summary.subscriptions+=r.subscriptions||0;
+    summary.sent+=r.sent||0;
+    summary.failed+=r.failed||0;
+    if(r.errors?.length)summary.errors.push(...r.errors.slice(0,2));
+  }
+  return summary;
+}
+
 
 async function init(){
  await sql`CREATE TABLE IF NOT EXISTS settings (id int primary key default 1, manager_pin_hash text not null, season text default 'Сезон команды', level_step int default 100)`;
@@ -97,6 +128,20 @@ module.exports=async(req,res)=>{
     const b=await body(req); if(b.endpoint)await sql`DELETE FROM push_subscriptions WHERE endpoint=${b.endpoint}`; return ok(res,{ok:true})
   }
 
+  if(req.method==='GET'&&path==='push/status'&&(u.role==='employee'||u.role==='supervisor')){
+    const rows=await sql`SELECT count(*)::int count FROM push_subscriptions WHERE employee_id=${u.id}`;
+    return ok(res,{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:rows[0]?.count||0})
+  }
+  if(req.method==='POST'&&path==='push/test'&&(u.role==='employee'||u.role==='supervisor')){
+    const result=await sendPushToEmployee(u.id,{
+      title:'Тест уведомлений 🚀',
+      body:'Если вы видите это сообщение — push-уведомления работают.',
+      url:'/',
+      tag:'push-test'
+    });
+    return ok(res,result)
+  }
+
 
   if(req.method==='POST'&&path==='individual-task/submit'&&(u.role==='employee'||u.role==='supervisor')){
     const b=await body(req);
@@ -132,7 +177,20 @@ module.exports=async(req,res)=>{
   if(req.method==='PUT'&&path==='admin/employees'){if(b.pin){const h=await bcrypt.hash(String(b.pin),10);await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false},pin_hash=${h} WHERE id=${b.id}`}else await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/employees'){await sql`DELETE FROM employees WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;return ok(res,{ok:true})}
-  if(req.method==='POST'&&path==='admin/tasks'){await sql`INSERT INTO tasks(title,description,points,active) VALUES(${b.title},${b.description||''},${Number(b.points)||0},${b.active!==false})`;return ok(res,{ok:true})}
+  if(req.method==='POST'&&path==='admin/tasks'){
+    const r=await sql`INSERT INTO tasks(title,description,points,active) VALUES(${b.title},${b.description||''},${Number(b.points)||0},${b.active!==false}) RETURNING id`;
+    let push=null;
+    if(b.active!==false){
+      push=await broadcastPush({
+        title:'Новое общее задание 🚀',
+        body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),
+        url:'/?open=tasks',
+        tag:'general-task-'+r[0].id
+      });
+      console.log('general task push',JSON.stringify(push));
+    }
+    return ok(res,{ok:true,id:r[0].id,push})
+  }
   if(req.method==='PUT'&&path==='admin/tasks'){await sql`UPDATE tasks SET title=${b.title},description=${b.description||''},points=${Number(b.points)||0},active=${b.active!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/tasks'){await sql`DELETE FROM tasks WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/prizes'){await sql`INSERT INTO prizes(title,description,cost,active) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},${b.active!==false})`;return ok(res,{ok:true})}
@@ -141,19 +199,34 @@ module.exports=async(req,res)=>{
   if(req.method==='POST'&&path==='admin/achievements'){await sql`INSERT INTO achievements(title,description,icon) VALUES(${b.title},${b.description||''},${b.icon||'★'})`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/achievements'){await sql`DELETE FROM achievements WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/achievement/assign'){await sql`INSERT INTO employee_achievements(employee_id,achievement_id) VALUES(${b.employee_id},${b.achievement_id}) ON CONFLICT DO NOTHING`;return ok(res,{ok:true})}
-  if(req.method==='POST'&&path==='admin/news'){if((b.image||'').length>1400000)return ok(res,{error:'Фото слишком большое'},400);await sql`INSERT INTO news(title,body,category,image,event_date,pinned,requires_ack,active) VALUES(${b.title},${b.body||''},${b.category||'Важно'},${b.image||null},${b.event_date||null},${!!b.pinned},${!!b.requires_ack},${b.active!==false})`;return ok(res,{ok:true})}
+  if(req.method==='POST'&&path==='admin/news'){
+    if((b.image||'').length>1400000)return ok(res,{error:'Фото слишком большое'},400);
+    const r=await sql`INSERT INTO news(title,body,category,image,event_date,pinned,requires_ack,active) VALUES(${b.title},${b.body||''},${b.category||'Важно'},${b.image||null},${b.event_date||null},${!!b.pinned},${!!b.requires_ack},${b.active!==false}) RETURNING id`;
+    let push=null;
+    if(b.active!==false){
+      push=await broadcastPush({
+        title:b.category==='Мероприятие'?'Новое мероприятие 📅':'Новая новость 📰',
+        body:b.title||'В ленте появилась новая публикация',
+        url:'/?open=news',
+        tag:'news-'+r[0].id
+      });
+      console.log('news push',JSON.stringify(push));
+    }
+    return ok(res,{ok:true,id:r[0].id,push})
+  }
   if(req.method==='PUT'&&path==='admin/news'){await sql`UPDATE news SET title=${b.title},body=${b.body||''},category=${b.category||'Важно'},event_date=${b.event_date||null},pinned=${!!b.pinned},requires_ack=${!!b.requires_ack},active=${b.active!==false},image=COALESCE(${b.image||null},image) WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/news'){await sql`DELETE FROM news WHERE id=${b.id}`;return ok(res,{ok:true})}
 
   if(req.method==='POST'&&path==='admin/individual-tasks'){
     const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null}) RETURNING id`;
-    await sendPushToEmployee(b.employee_id,{
+    const push=await sendPushToEmployee(b.employee_id,{
       title:'Новое индивидуальное задание 🚀',
       body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),
       url:'/?open=tasks',
       tag:'individual-task-'+r[0].id
     });
-    return ok(res,{ok:true,id:r[0].id})
+    console.log('individual task push',JSON.stringify(push));
+    return ok(res,{ok:true,id:r[0].id,push})
   }
   if(req.method==='PUT'&&path==='admin/individual-tasks'){
     await sql`UPDATE individual_tasks SET title=${b.title},description=${b.description||''},points=${Number(b.points)||0},due_date=${b.due_date||null},status=${b.status||'assigned'} WHERE id=${b.id}`;
@@ -172,7 +245,30 @@ module.exports=async(req,res)=>{
   if(req.method==='DELETE'&&path==='admin/individual-tasks'){
     await sql`DELETE FROM individual_tasks WHERE id=${b.id}`; return ok(res,{ok:true})
   }
-  if(req.method==='POST'&&path==='admin/competition/settings'){let c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0]; if(c) await sql`UPDATE competitions SET title=${b.title},description=${b.description||''},starts_on=${b.starts_on||null},ends_on=${b.ends_on||null},active=${b.active!==false} WHERE id=${c.id}`; else await sql`INSERT INTO competitions(title,description,starts_on,ends_on,active) VALUES(${b.title},${b.description||''},${b.starts_on||null},${b.ends_on||null},${b.active!==false})`; return ok(res,{ok:true})}
+  if(req.method==='POST'&&path==='admin/competition/settings'){
+    let c=(await sql`SELECT id,active,title,description,starts_on,ends_on FROM competitions ORDER BY id DESC LIMIT 1`)[0];
+    const oldSignature=c?JSON.stringify([c.title,c.description,c.starts_on,c.ends_on,c.active]):'';
+    let id=null;
+    if(c){
+      id=c.id;
+      await sql`UPDATE competitions SET title=${b.title},description=${b.description||''},starts_on=${b.starts_on||null},ends_on=${b.ends_on||null},active=${b.active!==false} WHERE id=${c.id}`;
+    }else{
+      const r=await sql`INSERT INTO competitions(title,description,starts_on,ends_on,active) VALUES(${b.title},${b.description||''},${b.starts_on||null},${b.ends_on||null},${b.active!==false}) RETURNING id`;
+      id=r[0].id;
+    }
+    let push=null;
+    const newSignature=JSON.stringify([b.title,b.description||'',b.starts_on||null,b.ends_on||null,b.active!==false]);
+    if(b.active!==false && oldSignature!==newSignature){
+      push=await broadcastPush({
+        title:c?.active?'Конкурс обновлён 🏆':'Старт нового конкурса 🏆',
+        body:b.title||'Откройте раздел конкурса и посмотрите условия',
+        url:'/?open=competition',
+        tag:'competition-'+id
+      });
+      console.log('competition push',JSON.stringify(push));
+    }
+    return ok(res,{ok:true,id,push})
+  }
   if(req.method==='POST'&&path==='admin/competition/tasks'){const c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0]; await sql`INSERT INTO competition_tasks(competition_id,title,description,points,active) VALUES(${c.id},${b.title},${b.description||''},${Number(b.points)||0},true)`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/competition/tasks'){await sql`DELETE FROM competition_tasks WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/competition/award'){const c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0]; const pts=Number(b.points)||0; await sql`INSERT INTO competition_scores(competition_id,employee_id,task_id,points,reason) VALUES(${c.id},${b.employee_id},${b.task_id||null},${pts},${b.reason||''})`; await sql`UPDATE employees SET points=points+${pts} WHERE id=${b.employee_id}`; await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${pts},${'Конкурс: '+(b.reason||'бонус')})`;return ok(res,{ok:true})}
