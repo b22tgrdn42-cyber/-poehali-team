@@ -1055,6 +1055,159 @@ label{
     gap:10px;
   }
 }
+
+/* V8.15 — typography and spacing refinement */
+:root{
+  --font-ui:"Trebuchet MS","Avenir Next","Segoe UI",Arial,sans-serif;
+}
+html{
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+body,
+button,
+input,
+select,
+textarea{
+  font-family:var(--font-ui);
+}
+body{
+  line-height:1.55;
+  letter-spacing:.012em;
+}
+h1,h2,h3,h4{
+  line-height:1.2;
+  letter-spacing:.015em;
+  font-weight:800;
+  text-wrap:balance;
+}
+h1{margin:0 0 18px}
+h2{margin:0 0 14px}
+h3{margin:0 0 10px}
+p{
+  line-height:1.62;
+  margin-top:8px;
+  margin-bottom:12px;
+}
+small,.muted{
+  line-height:1.5;
+  letter-spacing:.018em;
+}
+label{
+  display:block;
+  margin:12px 0 6px;
+  line-height:1.35;
+  letter-spacing:.02em;
+  font-weight:750;
+}
+button,.btn,.tabs button,.mobile-menu-item,.manage-dropdown button{
+  line-height:1.25;
+  letter-spacing:.025em;
+  word-spacing:.06em;
+}
+.btn{
+  padding-top:11px;
+  padding-bottom:11px;
+}
+.field,
+input,
+select,
+textarea{
+  line-height:1.4;
+  letter-spacing:.018em;
+}
+.field{
+  padding-top:12px;
+  padding-bottom:12px;
+}
+textarea.field{
+  line-height:1.55;
+}
+.card{
+  line-height:1.55;
+}
+.card > b,
+.listitem > b,
+.home-task b{
+  display:inline-block;
+  line-height:1.35;
+  letter-spacing:.018em;
+  margin-bottom:4px;
+}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  line-height:1.2;
+  letter-spacing:.025em;
+  padding:7px 10px;
+}
+.row{
+  column-gap:12px;
+  row-gap:9px;
+}
+.listitem{
+  line-height:1.5;
+  padding-top:12px;
+  padding-bottom:12px;
+}
+.tabs{
+  gap:7px;
+}
+.tabs button{
+  padding-left:14px;
+  padding-right:14px;
+}
+.manage-trigger{
+  letter-spacing:.025em;
+  word-spacing:.08em;
+}
+.manage-dropdown{
+  padding:10px;
+}
+.manage-dropdown button{
+  margin:2px 0;
+}
+.mobile-menu-section-title{
+  letter-spacing:.11em;
+  line-height:1.35;
+}
+.mobile-menu-item{
+  line-height:1.35;
+}
+.mobile-drawer-head b{
+  line-height:1.25;
+  letter-spacing:.018em;
+}
+.permission-grid{
+  gap:8px;
+}
+.toggle-line{
+  line-height:1.4;
+  gap:10px;
+}
+.person-pick{
+  gap:11px;
+  line-height:1.4;
+}
+.score{
+  line-height:1;
+  letter-spacing:-.02em;
+}
+@media(max-width:760px){
+  body{
+    line-height:1.5;
+    letter-spacing:.01em;
+  }
+  h2{line-height:1.22}
+  .card{
+    line-height:1.5;
+  }
+  .btn,.mobile-menu-item{
+    min-height:44px;
+  }
+}
 </style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
   <div class="mobile-drawer-backdrop" onclick="closeMobileMenu()"></div>
   <aside class="mobile-drawer-panel">
