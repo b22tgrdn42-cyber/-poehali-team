@@ -138,6 +138,12 @@ async function init(){
    value text not null,
    updated_at timestamptz default now()
  )`;
+
+ await sql`CREATE TABLE IF NOT EXISTS ui_replacements (
+   source_text text primary key,
+   replacement_text text not null,
+   updated_at timestamptz default now()
+ )`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -187,6 +193,10 @@ module.exports=async(req,res)=>{
   if(req.method==='GET'&&path==='content'){
     const rows=await sql`SELECT key,value FROM ui_texts ORDER BY key`;
     return ok(res,Object.fromEntries(rows.map(x=>[x.key,x.value])))
+  }
+  if(req.method==='GET'&&path==='content/replacements'){
+    const rows=await sql`SELECT source_text,replacement_text FROM ui_replacements ORDER BY source_text`;
+    return ok(res,rows)
   }
   if(!u) return ok(res,{error:'Требуется вход'},401);
   const b=await body(req);
@@ -368,6 +378,22 @@ module.exports=async(req,res)=>{
     await sql`DELETE FROM chats WHERE id=${b.id}`; return ok(res,{ok:true})
   }
 
+
+  if(req.method==='GET'&&path==='admin/content/replacements'){
+    return ok(res,await sql`SELECT source_text,replacement_text,updated_at FROM ui_replacements ORDER BY source_text`)
+  }
+  if(req.method==='POST'&&path==='admin/content/replacements'){
+    const source=String(b.source_text||'').trim();
+    if(!source)return ok(res,{error:'Укажите исходный текст'},400);
+    await sql`INSERT INTO ui_replacements(source_text,replacement_text,updated_at)
+      VALUES(${source},${String(b.replacement_text??'')},now())
+      ON CONFLICT(source_text) DO UPDATE SET replacement_text=${String(b.replacement_text??'')},updated_at=now()`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='DELETE'&&path==='admin/content/replacements'){
+    if(b.source_text)await sql`DELETE FROM ui_replacements WHERE source_text=${b.source_text}`;
+    return ok(res,{ok:true})
+  }
   if(req.method==='GET'&&path==='admin/content'){
     const rows=await sql`SELECT key,value,updated_at FROM ui_texts ORDER BY key`;
     return ok(res,rows)

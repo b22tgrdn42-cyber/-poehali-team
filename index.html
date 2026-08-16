@@ -608,16 +608,62 @@ textarea.field{min-height:110px;resize:vertical}
 .ui-edit-card textarea{min-height:82px}
 .ui-section-title{grid-column:1/-1;margin:14px 0 0;padding:8px 0;border-bottom:2px solid #ead9bd;font-size:18px}
 @media(max-width:760px){.ui-editor-grid{grid-template-columns:1fr}}
+
+.fulltext-tools{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fulltext-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.fulltext-row code{display:block;white-space:pre-wrap;word-break:break-word;background:#f4e6cf;padding:8px;border-radius:10px}
+.fulltext-note{padding:12px;border-radius:14px;background:#fff0d7;border:1px solid #e7c995;margin-bottom:14px}
+.editor-search{position:sticky;top:80px;z-index:10;background:#fffaf1;padding:10px;border-radius:14px;border:1px solid var(--line);margin-bottom:12px}
+@media(max-width:760px){.fulltext-tools,.fulltext-row{grid-template-columns:1fr}.editor-search{top:72px}}
 </style></head><body><header class="top"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
-const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={};
+const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[];
 
 function T(key,fallback){return (uiText&&Object.prototype.hasOwnProperty.call(uiText,key))?uiText[key]:fallback}
-async function loadUiText(){try{uiText=await api('content')}catch{uiText={}}}
+async function loadUiText(){
+  try{uiText=await api('content')}catch{uiText={}}
+  try{uiReplacements=await api('content/replacements')}catch{uiReplacements=[]}
+}
+function applyGlobalTextReplacements(root=document.body){
+  if(!root||!uiReplacements?.length)return;
+  const map=new Map(uiReplacements.map(x=>[x.source_text,x.replacement_text]));
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+    acceptNode(node){
+      if(!node.nodeValue||!node.nodeValue.trim())return NodeFilter.FILTER_REJECT;
+      const p=node.parentElement;
+      if(!p||['SCRIPT','STYLE','TEXTAREA','INPUT','OPTION','CODE'].includes(p.tagName))return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+  for(const node of nodes){
+    const raw=node.nodeValue,trim=raw.trim();
+    if(map.has(trim)){
+      const before=raw.slice(0,raw.indexOf(trim)),after=raw.slice(raw.indexOf(trim)+trim.length);
+      node.nodeValue=before+map.get(trim)+after;
+    }
+  }
+  document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(el=>{
+    const p=el.getAttribute('placeholder');if(map.has(p))el.setAttribute('placeholder',map.get(p));
+  });
+  document.querySelectorAll('[title]').forEach(el=>{
+    const t=el.getAttribute('title');if(map.has(t))el.setAttribute('title',map.get(t));
+  });
+}
+let replacementObserver=null;
+function startReplacementObserver(){
+  if(replacementObserver)replacementObserver.disconnect();
+  replacementObserver=new MutationObserver(muts=>{
+    for(const m of muts)for(const n of m.addedNodes)if(n.nodeType===1)applyGlobalTextReplacements(n);
+  });
+  replacementObserver.observe(document.body,{childList:true,subtree:true});
+  applyGlobalTextReplacements(document.body);
+}
 function applyChromeText(){
   const b=document.querySelector('.brand b'),s=document.querySelector('.brand small');
   if(b)b.textContent=T('site.title','КОМАНДА · ПОЕХАЛИ!');
   if(s)s.textContent=T('site.subtitle','Новости, конкурсы и достижения');
   document.title=T('site.browser_title','Команда, поехали!');
+  setTimeout(()=>applyGlobalTextReplacements(document.body),0);
 }
 function saveTabsScroll(kind){
   const t=document.querySelector('.tabs');
@@ -941,7 +987,7 @@ async function deleteMsg(id){if(!confirm('Удалить сообщение?'))r
 
 async function submitIndividual(id){await api('individual-task/submit',{method:'POST',body:JSON.stringify({id,comment:$('#ic'+id)?.value||''})});toast('Задание отправлено на проверку');employee()}
 function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div><span class=pill>${esc(n.category)}</span>${n.pinned?' 📌':''}</div><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}function savePhoto(){file64($('#pfile'),async p=>{if(!p)return;await api('me/photo',{method:'POST',body:JSON.stringify({photo:p})});toast('Фото сохранено');employee()})}
-let mtab='employees';async function manager(){try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:empAdmin(),tasks:crudList('Задания',state.tasks,'task'),prizes:crudList('Призы',state.prizes,'prize'),achievements:achAdmin(),news:newsAdmin(),competition:competitionAdmin(),individual:individualAdmin(),interface:interfaceAdmin(),history:`<div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`,settings:`<div class=card><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager')}
+let mtab='employees';async function manager(){try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:empAdmin(),tasks:crudList('Задания',state.tasks,'task'),prizes:crudList('Призы',state.prizes,'prize'),achievements:achAdmin(),news:newsAdmin(),competition:competitionAdmin(),individual:individualAdmin(),interface:interfaceAdmin(),history:`<div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`,settings:`<div class=card><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager');if(mtab==='interface')setTimeout(()=>renderReplacementList(),30)}
 function empAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Сотрудники и управляющий персонал</h2><p class="muted" style="margin-top:0">Роли, доступы, участие в рейтинге и персональные PIN-коды.</p><div class=grid3><input id=en class=field placeholder="Имя"><select id=ep class=field><option>Официант</option><option>Бармен</option><option>Администратор</option><option>Старший смены</option><option>Управляющий</option><option>Стажёр</option><option>Другое</option></select><input id=epin class=field placeholder="Индивидуальный PIN"></div><div class=grid><label>Уровень доступа<select id=ear class=field><option value="employee">Сотрудник</option><option value="supervisor">Наблюдатель / руководитель</option></select></label><label style="padding-top:14px"><input id=etm type=checkbox checked> Показывать как участника команды (рейтинг, конкурс)</label><label style="padding-top:14px"><input id=ema type=checkbox> Доступ к внутреннему мессенджеру</label></div><button class="btn red" onclick="addEmp()">Добавить</button></div>${state.employees.map(e=>`<div class=card><div class=row><img class=avatar src="${e.photo||'/assets/logo.png'}"><div><b>${esc(e.name)}</b><br><small>${esc(e.position)} · ${e.active?'Активен':'Заблокирован'} · ${e.team_member?'Участник команды':'Не участвует в рейтинге'}</small><br>${e.access_role==='supervisor'?'<span class=supervisor-badge>Доступ наблюдателя</span>':''}</div><div class=score style="margin-left:auto">${e.points}</div></div><div class=grid><div><input id="d${e.id}" class=field type=number placeholder="Баллы (+/-)"><input id="r${e.id}" class=field placeholder="Причина"><button class=btn onclick="points(${e.id})">Изменить баллы</button></div><div><input id="p${e.id}" class=field placeholder="Новый PIN"><select id="ar${e.id}" class=field><option value="employee" ${e.access_role!=='supervisor'?'selected':''}>Сотрудник</option><option value="supervisor" ${e.access_role==='supervisor'?'selected':''}>Наблюдатель / руководитель</option></select><label><input id="tm${e.id}" type=checkbox ${e.team_member?'checked':''}> Участник команды</label><br><label><input id="ma${e.id}" type=checkbox ${e.messenger_access?'checked':''}> Доступ к мессенджеру</label><br><button class=btn onclick="saveEmpMeta(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active})">Сохранить роль</button> <button class=btn onclick="resetPin(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active},'${e.access_role}',${e.team_member})">Сменить PIN</button> <button class="btn ${e.active?'danger':'ok'}" onclick="toggleEmp(${e.id},'${esc(e.name)}','${esc(e.position)}',${!e.active},'${e.access_role}',${e.team_member})">${e.active?'Заблокировать':'Разблокировать'}</button> <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button></div></div></div>`).join('')}`}
 async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked,messenger_access:$('#ema').checked})});toast('Сотрудник добавлен');manager()}
 async function points(id){let delta=+$('#d'+id).value;await api('admin/points',{method:'POST',body:JSON.stringify({employee_id:id,delta,reason:$('#r'+id).value})});pointCelebration(delta);manager()}
@@ -1017,10 +1063,56 @@ const UI_FIELDS=[
 ];
 function interfaceAdmin(){
  let last='';
- return `<div class=card><h2>Редактор интерфейса</h2><p class=muted>Изменения сохраняются в Neon и применяются для всех пользователей. Пустое поле тоже считается значением. Кнопка «Вернуть стандарт» удаляет переопределение.</p><div class=ui-editor-grid>${UI_FIELDS.map(([section,key,label,def])=>{
-   const head=section!==last?(last=section,`<h3 class=ui-section-title>${esc(section)}</h3>`):'';
-   return head+`<div class=ui-edit-card><label>${esc(label)} · <code>${esc(key)}</code></label><textarea id="ui_${key.replace(/\./g,'_')}" class=field>${esc(T(key,def))}</textarea><div class=row><button class="btn red" onclick="saveUiField('${key}','ui_${key.replace(/\./g,'_')}')">Сохранить</button><button class="btn light" onclick="resetUiField('${key}')">Вернуть стандарт</button></div></div>`
- }).join('')}</div><div style="margin-top:16px"><button class="btn red" onclick="saveAllUi()">Сохранить все изменения</button></div></div>`
+ return `<div class=card>
+   <h2>Редактор интерфейса</h2>
+   <p class=muted>Здесь управляющий может менять стандартные тексты интерфейса и создавать глобальные замены для любых других фраз на сайте. Все изменения сохраняются в Neon.</p>
+   <div class=fulltext-note><b>Универсальная замена текста</b><br>Если нужной надписи нет в списке ниже, скопируйте её с сайта в поле «Исходный текст» и укажите новый вариант. Замена применяется ко всем экранам, где встречается эта точная фраза.</div>
+   <div class=fulltext-tools>
+     <div><label>Исходный текст</label><textarea id=repSource class=field placeholder="Например: Проверить доставку"></textarea></div>
+     <div><label>Новый текст</label><textarea id=repValue class=field placeholder="Например: Отправить тестовое уведомление"></textarea></div>
+   </div>
+   <button class="btn red" onclick="saveReplacement()">Добавить / обновить замену</button>
+ </div>
+ <div class=card>
+   <h2>Глобальные замены</h2>
+   <input id=repSearch class="field editor-search" placeholder="Поиск по заменам" oninput="renderReplacementList()">
+   <div id=replacementList></div>
+ </div>
+ <div class=card>
+   <h2>Стандартные поля интерфейса</h2>
+   <input id=uiFieldSearch class="field editor-search" placeholder="Поиск по названиям и ключам" oninput="filterUiFields()">
+   <div id=uiFieldsWrap class=ui-editor-grid>${UI_FIELDS.map(([section,key,label,def])=>{
+     const head=section!==last?(last=section,`<h3 class="ui-section-title ui-section-node" data-search="${esc((section+' '+key+' '+label).toLowerCase())}">${esc(section)}</h3>`):'';
+     return head+`<div class="ui-edit-card ui-field-node" data-search="${esc((section+' '+key+' '+label+' '+def).toLowerCase())}"><label>${esc(label)} · <code>${esc(key)}</code></label><textarea id="ui_${key.replace(/\./g,'_')}" class=field>${esc(T(key,def))}</textarea><div class=row><button class="btn red" onclick="saveUiField('${key}','ui_${key.replace(/\./g,'_')}')">Сохранить</button><button class="btn light" onclick="resetUiField('${key}')">Вернуть стандарт</button></div></div>`
+   }).join('')}</div>
+   <div style="margin-top:16px"><button class="btn red" onclick="saveAllUi()">Сохранить все изменения</button></div>
+ </div>`
+}
+function filterUiFields(){
+ const q=($('#uiFieldSearch')?.value||'').toLowerCase().trim();
+ document.querySelectorAll('.ui-field-node').forEach(n=>n.style.display=!q||n.dataset.search.includes(q)?'':'none');
+ document.querySelectorAll('.ui-section-node').forEach(n=>n.style.display=!q||n.dataset.search.includes(q)?'':'');
+}
+function renderReplacementList(){
+ const box=$('#replacementList');if(!box)return;
+ const q=($('#repSearch')?.value||'').toLowerCase();
+ const rows=(uiReplacements||[]).filter(x=>(x.source_text+' '+x.replacement_text).toLowerCase().includes(q));
+ box.innerHTML=rows.length?rows.map(x=>`<div class=fulltext-row><div><small>Исходный текст</small><code>${esc(x.source_text)}</code></div><div><small>Новый текст</small><code>${esc(x.replacement_text)}</code></div><button class="btn danger" onclick='deleteReplacement(${JSON.stringify(x.source_text)})'>Удалить</button></div>`).join(''):'<p class=muted>Глобальных замен пока нет.</p>'
+}
+async function saveReplacement(){
+ const source=$('#repSource').value.trim(),value=$('#repValue').value;
+ if(!source)return toast('Введите исходный текст');
+ await api('admin/content/replacements',{method:'POST',body:JSON.stringify({source_text:source,replacement_text:value})});
+ const i=uiReplacements.findIndex(x=>x.source_text===source);
+ if(i>=0)uiReplacements[i].replacement_text=value;else uiReplacements.push({source_text:source,replacement_text:value});
+ $('#repSource').value='';$('#repValue').value='';
+ renderReplacementList();applyGlobalTextReplacements(document.body);toast('Глобальная замена сохранена')
+}
+async function deleteReplacement(source){
+ await api('admin/content/replacements',{method:'DELETE',body:JSON.stringify({source_text:source})});
+ uiReplacements=uiReplacements.filter(x=>x.source_text!==source);
+ toast('Замена удалена. Исходный текст вернётся после обновления экрана.');
+ manager()
 }
 async function saveUiField(key,id){
  const value=$('#'+id).value;
@@ -1054,5 +1146,5 @@ async function del(kind,id){if(!confirm('Удалить?'))return;await api('adm
 async function supervisor(){try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
 function renderSupervisor(){let team=state.employees.filter(e=>e.team_member),others=state.employees.filter(e=>!e.team_member);$('#app').innerHTML=`<div class="card hero"><h2>Панель руководителя</h2><p>Просмотр прогресса команды без доступа к начислению баллов и изменению настроек.</p></div><div class=grid><div class=card><h3>Команда</h3>${team.map((e,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${e.photo||'/assets/logo.png'}"><span>${esc(e.name)}<br><small>${esc(e.position)}</small></span><b style="margin-left:auto">${e.points}</b></div>`).join('')}</div><div class=card><h3>Текущие задания</h3>${state.pending.map(t=>`<div class=listitem><b>${esc(t.employee_name)}</b> — ${esc(t.title)}<br><small>${t.status==='submitted'?'На проверке':'Назначено'}${t.due_date?' · до '+new Date(t.due_date).toLocaleDateString('ru'):''}</small></div>`).join('')||'Нет активных заданий'}</div></div><div class=grid><div class=card><h3>Последние достижения</h3>${state.achievements.slice(0,30).map(a=>{let e=state.employees.find(x=>x.id===a.employee_id);return `<div class=listitem>${esc(a.icon)} <b>${esc(e?.name||'')}</b> — ${esc(a.title)}</div>`}).join('')||'Пока нет достижений'}</div><div class=card><h3>Конкурс</h3>${state.competition?state.competition.board.map((x,i)=>`<div class=listitem>${i+1}. <b>${esc(x.name)}</b> — ${x.score}</div>`).join(''):'Нет активного конкурса'}${others.length?`<hr><small>Не участвуют в рейтинге: ${others.map(x=>esc(x.name)).join(', ')}</small>`:''}</div></div>`;animateSection()}
 
-(async()=>{await loadUiText();applyChromeText();const q=new URLSearchParams(location.search),open=q.get('open');if(['tasks','news','competition','messenger'].includes(open))etab=open;if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else if(token&&role==='manager')manager();else login()})();
+(async()=>{await loadUiText();applyChromeText();startReplacementObserver();const q=new URLSearchParams(location.search),open=q.get('open');if(['tasks','news','competition','messenger'].includes(open))etab=open;if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else if(token&&role==='manager')manager();else login()})();
 </script></body></html>
