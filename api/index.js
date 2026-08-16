@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.0.5';
+const APP_VERSION = '9.0.7';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -380,7 +380,7 @@ function hasAnyStaffPermission(p){
 module.exports=async(req,res)=>{
  try{
   await init(); const path=(req.query.path||'').toString(); const u=auth(req);
-  if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,birthday,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`)}
+  if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,gender,birthday,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`)}
   if(req.method==='POST'&&path==='login/employee'){const b=await body(req); const rows=await sql`SELECT * FROM employees WHERE id=${b.id} AND active=true`; if(!rows.length||!(await bcrypt.compare(String(b.pin||''),rows[0].pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:(rows[0].access_role==='supervisor'?'supervisor':'employee'),id:rows[0].id}),access_role:rows[0].access_role||'employee'})}
   if(req.method==='POST'&&path==='login/manager'){
     return ok(res,{error:'Отдельный вход управляющего отключён. Войдите как сотрудник.'},410)
@@ -496,7 +496,7 @@ module.exports=async(req,res)=>{
 
   if(req.method==='GET'&&path==='messenger/state'&&(u.role==='employee'||u.role==='supervisor')){
     if(!(await messengerAllowed(u.id)))return ok(res,{error:'Доступ к мессенджеру не предоставлен'},403);
-    const people=await sql`SELECT id,name,position,photo,last_seen FROM employees WHERE active=true AND archived_at IS NULL AND messenger_access=true AND id<>${u.id} ORDER BY name`;
+    const people=await sql`SELECT id,name,position,photo,gender,last_seen FROM employees WHERE active=true AND archived_at IS NULL AND messenger_access=true AND id<>${u.id} ORDER BY name`;
     const chats=await sql`
       SELECT c.id,c.type,c.title,c.created_at,
         COALESCE((SELECT m.body FROM messages m WHERE m.chat_id=c.id AND m.deleted=false ORDER BY m.id DESC LIMIT 1),'') last_message,
@@ -719,7 +719,7 @@ module.exports=async(req,res)=>{
     const rows=await sql`SELECT id,name,position,photo,birthday,gender FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
     return ok(res,rows)
   }
-  if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,birthday,points,photo,active,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
+  if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,birthday,points,photo,gender,active,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
  const individualTasks=await sql`SELECT * FROM individual_tasks WHERE employee_id=${u.id} ORDER BY CASE status WHEN 'assigned' THEN 1 WHEN 'submitted' THEN 2 ELSE 3 END, due_date NULLS LAST, created_at DESC`;
  const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND active=true ORDER BY points,title`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.archived_at IS NULL AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; const mine=board.find(x=>x.id===u.id); competition={...comp,tasks:ct,board,my_score:mine?mine.score:0,my_place:board.findIndex(x=>x.id===u.id)+1};}
@@ -751,7 +751,7 @@ module.exports=async(req,res)=>{
     return ok(res,{ok:true,id:c[0].id})
   }
   if(req.method==='GET'&&path==='admin/messenger'){
-    const users=await sql`SELECT id,name,position,photo,messenger_access,active,last_seen FROM employees WHERE archived_at IS NULL ORDER BY name`;
+    const users=await sql`SELECT id,name,position,photo,gender,messenger_access,active,last_seen FROM employees WHERE archived_at IS NULL ORDER BY name`;
     const chats=await sql`SELECT c.*, (SELECT count(*)::int FROM chat_members cm WHERE cm.chat_id=c.id) members_count, (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id) messages_count FROM chats c ORDER BY c.created_at DESC`;
     return ok(res,{users,chats})
   }
