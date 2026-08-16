@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.2.5';
+const APP_VERSION = '9.3.0';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -246,6 +246,9 @@ async function init(){
    created_at timestamptz default now()
  )`;
 
+
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS onboarding_offered_at timestamptz`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS onboarding_capabilities jsonb default '{}'::jsonb`;
  await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
  await sql`ALTER TABLE prizes ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
@@ -490,6 +493,35 @@ module.exports=async(req,res)=>{
     return ok(res,result)
   }
 
+
+
+  if(req.method==='GET'&&path==='tutorial/state'&&(u.role==='employee'||u.role==='supervisor')){
+    const row=(await sql`SELECT onboarding_offered_at,onboarding_capabilities FROM employees WHERE id=${u.id}`)[0];
+    return ok(res,{
+      base_offered:!!row?.onboarding_offered_at,
+      capabilities:row?.onboarding_capabilities||{}
+    })
+  }
+
+  if(req.method==='POST'&&path==='tutorial/base-offered'&&(u.role==='employee'||u.role==='supervisor')){
+    const caps=(b.capabilities&&typeof b.capabilities==='object')?b.capabilities:{};
+    const row=(await sql`UPDATE employees
+      SET onboarding_offered_at=COALESCE(onboarding_offered_at,now()),
+          onboarding_capabilities=${JSON.stringify(caps)}::jsonb
+      WHERE id=${u.id}
+      RETURNING onboarding_offered_at,onboarding_capabilities`)[0];
+    return ok(res,{
+      ok:true,
+      base_offered:!!row?.onboarding_offered_at,
+      capabilities:row?.onboarding_capabilities||{}
+    })
+  }
+
+  if(req.method==='POST'&&path==='tutorial/capabilities'&&(u.role==='employee'||u.role==='supervisor')){
+    const caps=(b.capabilities&&typeof b.capabilities==='object')?b.capabilities:{};
+    await sql`UPDATE employees SET onboarding_capabilities=${JSON.stringify(caps)}::jsonb WHERE id=${u.id}`;
+    return ok(res,{ok:true,capabilities:caps})
+  }
 
   if(req.method==='POST'&&path==='individual-task/submit'&&(u.role==='employee'||u.role==='supervisor')){
     const b=await body(req);

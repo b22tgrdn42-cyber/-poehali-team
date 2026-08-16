@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.2.5';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.3.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -606,11 +606,22 @@ function tutorialPrev(){
   tutorialState.index=Math.max(0,tutorialState.index-1);
   renderTutorialStep();
 }
-function finishTutorial(){
+async function finishTutorial(){
   const id=tutorialState.employeeId;
+  const caps=tutorialState.pendingCapabilities;
   if(id){
     if(tutorialState.mode==='base')markTutorialSeen(id);
-    if(tutorialState.pendingCapabilities)storeCapabilityMap(id,tutorialState.pendingCapabilities);
+    if(caps){
+      storeCapabilityMap(id,caps);
+      try{
+        await api('tutorial/capabilities',{
+          method:'POST',
+          body:JSON.stringify({capabilities:caps})
+        });
+      }catch(e){
+        console.warn('tutorial capabilities save failed',e);
+      }
+    }
   }
   closeTutorial(false);
   toast('Обучение завершено');
@@ -660,17 +671,8 @@ function dismissTutorialOffer(mode){
   $('#tutorialOffer')?.classList.remove('open');
   tutorialOfferActive=false;
   document.body.classList.remove('tutorial-open');
-  // Preserve capability snapshot even if training is postponed, but store pending keys separately.
-  if(tutorialState.employeeId && tutorialState.pendingCapabilities){
-    if(mode==='base'){
-      localStorage.setItem(tutorialStorageKey(tutorialState.employeeId,'base-offered'),'1');
-    }else{
-      localStorage.setItem(
-        tutorialStorageKey(tutorialState.employeeId,'pending-new'),
-        JSON.stringify(newlyGrantedCapabilities(tutorialState.employeeId,tutorialState.pendingCapabilities))
-      );
-    }
-  }
+  // Base onboarding has already been marked as offered in Neon,
+  // so it will never appear again on later logins.
 }
 function acceptTutorialOffer(){
   $('#tutorialOffer')?.classList.remove('open');
@@ -686,33 +688,40 @@ function acceptTutorialOffer(){
 }
 async function evaluateTutorialForCurrentUser(){
   if(tutorialRuntimeActive||tutorialOfferActive)return;
-  const e=tutorialEmployee();if(!e?.id)return;
+  const e=tutorialEmployee();if(!e?.id||!token)return;
   const current=employeeCapabilityMap(e);
-  const baseDone=tutorialSeen(e.id);
-  const baseOffered=localStorage.getItem(tutorialStorageKey(e.id,'base-offered'))==='1';
 
-  if(!baseDone && !baseOffered){
-    offerTutorial(baseTutorialSteps(e),'base',current);
-    return;
-  }
+  try{
+    const server=await api('tutorial/state');
 
-  const pendingRaw=localStorage.getItem(tutorialStorageKey(e.id,'pending-new'));
-  let pending=[];
-  try{pending=pendingRaw?JSON.parse(pendingRaw):[]}catch{}
-  const newlyGranted=[...new Set([...pending,...newlyGrantedCapabilities(e.id,current)])]
-    .filter(k=>current[k]);
-
-  if(baseDone && newlyGranted.length){
-    localStorage.removeItem(tutorialStorageKey(e.id,'pending-new'));
-    const steps=capabilityTutorialSteps(newlyGranted,e);
-    if(steps.length){
-      offerTutorial(steps,'permissions',current);
+    // Base onboarding is offered exactly once for the employee account.
+    if(!server.base_offered){
+      await api('tutorial/base-offered',{
+        method:'POST',
+        body:JSON.stringify({capabilities:current})
+      });
+      storeCapabilityMap(e.id,current);
+      offerTutorial(baseTutorialSteps(e),'base',current);
       return;
     }
-  }
 
-  // Baseline only after initial training is complete. This enables later permission-change detection.
-  if(baseDone)storeCapabilityMap(e.id,current);
+    const previous=(server.capabilities&&typeof server.capabilities==='object')
+      ?server.capabilities:{};
+    const newlyGranted=Object.keys(current)
+      .filter(k=>current[k]===true && previous[k]!==true);
+
+    if(newlyGranted.length){
+      const steps=capabilityTutorialSteps(newlyGranted,e);
+      if(steps.length){
+        offerTutorial(steps,'permissions',current);
+        return;
+      }
+    }
+
+    storeCapabilityMap(e.id,current);
+  }catch(err){
+    console.warn('tutorial state check failed',err);
+  }
 }
 function resetMyTutorial(){
   const e=tutorialEmployee();if(!e)return;
@@ -1588,7 +1597,48 @@ async function showEmployeeWelcome(){
  },1700);
 }
 
-async function empLogin(){try{if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+selectedEmployeeId,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;showEmployeeWelcome()}catch(e){toast(e.message)}}
+async function empLogin(){
+  try{
+    if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');
+
+    // Start the native permission prompt immediately from the PIN button click.
+    // This preserves the user gesture required by Safari/Chrome.
+    let permissionPromise=null;
+    if(isPushSupported() && Notification.permission==='default'){
+      try{
+        permissionPromise=Notification.requestPermission();
+      }catch(e){
+        console.warn('permission prompt start failed',e);
+      }
+    }
+
+    const j=await api('login/employee',{
+      method:'POST',
+      body:JSON.stringify({
+        id:+selectedEmployeeId,
+        pin:$('#pin').value
+      })
+    });
+
+    token=j.token;
+    role=(j.access_role==='supervisor'?'supervisor':'employee');
+    localStorage.token=token;
+    localStorage.role=role;
+
+    if(permissionPromise){
+      try{await permissionPromise}catch{}
+    }
+
+    // A valid permission alone is not enough: a real subscription must exist
+    // and must be registered in Neon before entering the cabinet.
+    const pushOK=await enforceStrictPushGate(null,false);
+    if(!pushOK)return;
+
+    showEmployeeWelcome();
+  }catch(e){
+    toast(e.message);
+  }
+}
 let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');const pushOK=await enforceStrictPushGate(null,true);if(!pushOK)return;setTimeout(ensurePushSubscription,250);if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 ${installHintHtml()}
 ${homeNewsHtml(state.news)}
