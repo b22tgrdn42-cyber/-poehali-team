@@ -158,6 +158,19 @@ async function init(){
    active boolean default true,
    created_at timestamptz default now()
  )`;
+
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_manage_tasks boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_assign_individual boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_manage_news boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_manage_competition boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_manage_prizes boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_manage_achievements boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS can_manage_permissions boolean DEFAULT false`;
+ await sql`UPDATE employees SET
+   can_manage_tasks = CASE WHEN position IN ('Управляющий','Старший официант','Шеф-бармен') THEN true ELSE can_manage_tasks END,
+   can_assign_individual = CASE WHEN position IN ('Управляющий','Старший официант','Шеф-бармен') THEN true ELSE can_assign_individual END,
+   can_manage_permissions = CASE WHEN position='Управляющий' THEN true ELSE can_manage_permissions END
+ `;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -196,6 +209,14 @@ async function messagePush(chatId,senderId,messageId,body){
       });
     }
   }
+}
+
+async function employeePermissions(employeeId){
+  const rows=await sql`SELECT can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${employeeId} AND active=true`;
+  return rows[0]||{};
+}
+function hasAnyStaffPermission(p){
+  return !!(p.can_manage_tasks||p.can_assign_individual||p.can_manage_news||p.can_manage_competition||p.can_manage_prizes||p.can_manage_achievements||p.can_manage_permissions);
 }
 module.exports=async(req,res)=>{
  try{
@@ -370,7 +391,84 @@ module.exports=async(req,res)=>{
     await sql`INSERT INTO chat_typing(chat_id,employee_id,touched_at) VALUES(${chatId},${u.id},now()) ON CONFLICT(chat_id,employee_id) DO UPDATE SET touched_at=now()`;
     return ok(res,{ok:true})
   }
-  if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,points,photo,active,access_role,team_member,messenger_access,last_seen FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
+
+  if(req.method==='GET'&&path==='staff/state'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);
+    if(!hasAnyStaffPermission(p))return ok(res,{error:'Нет управленческих прав'},403);
+    const out={permissions:p};
+    if(p.can_manage_tasks)out.tasks=await sql`SELECT * FROM tasks ORDER BY id DESC`;
+    if(p.can_assign_individual)out.individualTasks=await sql`SELECT i.*,e.name employee_name FROM individual_tasks i JOIN employees e ON e.id=i.employee_id ORDER BY i.id DESC`;
+    if(p.can_manage_news)out.news=await sql`SELECT * FROM news ORDER BY pinned DESC,id DESC`;
+    if(p.can_manage_prizes)out.prizes=await sql`SELECT * FROM prizes ORDER BY id DESC`;
+    if(p.can_manage_achievements)out.achievements=await sql`SELECT * FROM achievements ORDER BY id DESC`;
+    if(p.can_manage_competition){
+      out.competition=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null;
+      if(out.competition)out.competition.tasks=await sql`SELECT * FROM competition_tasks WHERE competition_id=${out.competition.id} ORDER BY id DESC`;
+    }
+    if(p.can_manage_permissions){
+      out.employees=await sql`SELECT id,name,position,active,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY active DESC,name`;
+    }else{
+      out.employees=await sql`SELECT id,name,position,active FROM employees WHERE active=true ORDER BY name`;
+    }
+    return ok(res,out)
+  }
+
+  if(req.method==='POST'&&path==='staff/tasks'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_tasks)return ok(res,{error:'Нет права создавать общие задания'},403);
+    const r=await sql`INSERT INTO tasks(title,description,points,active) VALUES(${b.title},${b.description||''},${Number(b.points)||0},true) RETURNING id`;
+    const push=await broadcastPush({title:'Новое общее задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'general-task-'+r[0].id});
+    return ok(res,{ok:true,id:r[0].id,push})
+  }
+
+  if(req.method==='POST'&&path==='staff/individual-tasks'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_assign_individual)return ok(res,{error:'Нет права назначать индивидуальные задания'},403);
+    const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date,status) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null},'assigned') RETURNING id`;
+    await sendPushToEmployee(b.employee_id,{title:'Новое индивидуальное задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'individual-task-'+r[0].id});
+    return ok(res,{ok:true,id:r[0].id})
+  }
+
+  if(req.method==='POST'&&path==='staff/news'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_news)return ok(res,{error:'Нет права публиковать новости'},403);
+    const r=await sql`INSERT INTO news(title,body,category,image,event_date,pinned,requires_ack,active) VALUES(${b.title},${b.body||''},${b.category||'Важно'},${b.image||null},${b.event_date||null},false,false,true) RETURNING id`;
+    const push=await broadcastPush({title:'Новая новость 📰',body:b.title||'Новая публикация',url:'/?open=news',tag:'news-'+r[0].id});
+    return ok(res,{ok:true,id:r[0].id,push})
+  }
+
+  if(req.method==='POST'&&path==='staff/prizes'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_prizes)return ok(res,{error:'Нет права создавать призы'},403);
+    const r=await sql`INSERT INTO prizes(title,description,cost,active) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},true) RETURNING id`;
+    return ok(res,{ok:true,id:r[0].id})
+  }
+
+  if(req.method==='POST'&&path==='staff/achievements'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_achievements)return ok(res,{error:'Нет права создавать достижения'},403);
+    const r=await sql`INSERT INTO achievements(icon,title,description) VALUES(${b.icon||'★'},${b.title},${b.description||''}) RETURNING id`;
+    return ok(res,{ok:true,id:r[0].id})
+  }
+
+  if(req.method==='POST'&&path==='staff/competition/settings'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_competition)return ok(res,{error:'Нет права управлять конкурсами'},403);
+    let c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0],id;
+    if(c){id=c.id;await sql`UPDATE competitions SET title=${b.title},description=${b.description||''},starts_on=${b.starts_on||null},ends_on=${b.ends_on||null},active=${b.active!==false} WHERE id=${id}`}
+    else {const r=await sql`INSERT INTO competitions(title,description,starts_on,ends_on,active) VALUES(${b.title},${b.description||''},${b.starts_on||null},${b.ends_on||null},${b.active!==false}) RETURNING id`;id=r[0].id}
+    if(b.active!==false)await broadcastPush({title:'Конкурс 🏆',body:b.title||'Обновлён конкурс',url:'/?open=competition',tag:'competition-'+id});
+    return ok(res,{ok:true,id})
+  }
+
+  if(req.method==='POST'&&path==='staff/competition/tasks'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_competition)return ok(res,{error:'Нет права управлять конкурсами'},403);
+    const c=(await sql`SELECT id FROM competitions ORDER BY id DESC LIMIT 1`)[0];if(!c)return ok(res,{error:'Сначала создайте конкурс'},400);
+    const r=await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES(${c.id},${b.title},${b.description||''},${Number(b.points)||0}) RETURNING id`;
+    return ok(res,{ok:true,id:r[0].id})
+  }
+
+  if(req.method==='POST'&&path==='staff/permissions'&&(u.role==='employee'||u.role==='supervisor')){
+    const p=await employeePermissions(u.id);if(!p.can_manage_permissions)return ok(res,{error:'Нет права выдавать права сотрудникам'},403);
+    const target=Number(b.employee_id);if(!target)return ok(res,{error:'Сотрудник не указан'},400);
+    await sql`UPDATE employees SET can_manage_tasks=${!!b.can_manage_tasks},can_assign_individual=${!!b.can_assign_individual},can_manage_news=${!!b.can_manage_news},can_manage_competition=${!!b.can_manage_competition},can_manage_prizes=${!!b.can_manage_prizes},can_manage_achievements=${!!b.can_manage_achievements},can_manage_permissions=${!!b.can_manage_permissions} WHERE id=${target}`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,points,photo,active,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
  const individualTasks=await sql`SELECT * FROM individual_tasks WHERE employee_id=${u.id} ORDER BY CASE status WHEN 'assigned' THEN 1 WHEN 'submitted' THEN 2 ELSE 3 END, due_date NULLS LAST, created_at DESC`;
  const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND active=true ORDER BY points,title`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; const mine=board.find(x=>x.id===u.id); competition={...comp,tasks:ct,board,my_score:mine?mine.score:0,my_place:board.findIndex(x=>x.id===u.id)+1};}
