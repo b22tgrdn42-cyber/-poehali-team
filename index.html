@@ -297,16 +297,16 @@ textarea.field{min-height:110px;resize:vertical}
 
 /* Premium transitions */
 #app{position:relative;transform-origin:50% 20%}
-#app.page-enter{animation:pageEnter .48s cubic-bezier(.16,1,.3,1) both}
+#app.page-enter{animation:pageEnter .34s cubic-bezier(.22,1,.36,1) both}
 @keyframes pageEnter{
-  0%{opacity:0;transform:translateY(18px) scale(.985);filter:blur(6px)}
-  100%{opacity:1;transform:none;filter:none}
+  0%{opacity:.35;transform:translateY(7px) scale(.997)}
+  100%{opacity:1;transform:none}
 }
-.card{animation:cardEnter .45s cubic-bezier(.16,1,.3,1) both}
-.card:nth-of-type(2){animation-delay:.035s}
-.card:nth-of-type(3){animation-delay:.07s}
-.card:nth-of-type(4){animation-delay:.105s}
-@keyframes cardEnter{from{opacity:0;transform:translateY(16px) scale(.99)}to{opacity:1;transform:none}}
+.card{animation:cardEnter .38s cubic-bezier(.22,1,.36,1) both}
+.card:nth-of-type(2){animation-delay:.02s}
+.card:nth-of-type(3){animation-delay:.04s}
+.card:nth-of-type(4){animation-delay:.06s}
+@keyframes cardEnter{from{opacity:.2;transform:translateY(8px)}to{opacity:1;transform:none}}
 .nav-flare{position:fixed;inset:0;z-index:9000;pointer-events:none;overflow:hidden}
 .nav-flare:before{
   content:"";
@@ -374,12 +374,11 @@ textarea.field{min-height:110px;resize:vertical}
     scroll-behavior:auto!important
   }
 }
-</style></head><body><header class="top"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Внутренняя платформа команды</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
+</style></head><body><header class="top"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
 const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null;
 function animateSection(){
  const a=document.querySelector('#app');if(!a)return;
  a.classList.remove('view-transition','page-enter');void a.offsetWidth;a.classList.add('page-enter');
- const f=document.createElement('div');f.className='nav-flare';document.body.appendChild(f);setTimeout(()=>f.remove(),520);
 }
 function fireworks(kind='login',amount=42){
   if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
