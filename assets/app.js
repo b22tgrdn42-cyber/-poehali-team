@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.1.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.1.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -767,6 +767,159 @@ async function ensurePushSubscription(){
   }catch(e){
     console.warn('automatic push repair failed',e);
   }
+}
+
+
+function isPushSupported(){
+  return ('Notification' in window) && ('serviceWorker' in navigator) && ('PushManager' in window);
+}
+async function hasValidPushSubscription(){
+  if(!isPushSupported() || Notification.permission!=='granted')return false;
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(!sub)return false;
+    const key=await api('push/key');
+    if(!key.publicKey)return false;
+    const current=uint8ToB64Url(sub.options?.applicationServerKey);
+    return !!current && current===key.publicKey;
+  }catch(e){
+    console.warn('push validity check failed',e);
+    return false;
+  }
+}
+function closeMandatoryPushGate(){
+  const gate=$('#mandatoryPushGate');
+  if(gate)gate.remove();
+  document.body.classList.remove('push-gate-open');
+}
+function mandatoryPushInstruction(){
+  const ua=navigator.userAgent||'';
+  const ios=/iPhone|iPad|iPod/i.test(ua);
+  if(ios && !isStandaloneApp()){
+    return 'На iPhone push-уведомления работают после добавления сайта на экран «Домой». Добавьте сайт на главный экран, откройте его с иконки и повторите подключение.';
+  }
+  return 'Разрешение на уведомления заблокировано в браузере. Откройте настройки сайта/браузера, разрешите уведомления для этого сайта и нажмите «Проверить снова».';
+}
+function renderMandatoryPushGate(message=''){
+  let gate=$('#mandatoryPushGate');
+  if(!gate){
+    gate=document.createElement('div');
+    gate.id='mandatoryPushGate';
+    gate.className='mandatory-push-gate';
+    document.body.appendChild(gate);
+  }
+  document.body.classList.add('push-gate-open');
+  const permission=('Notification' in window)?Notification.permission:'unsupported';
+  const supported=isPushSupported();
+
+  gate.innerHTML=`<div class="mandatory-push-card">
+    <img src="/assets/logo.png" class="mandatory-push-logo" alt="">
+    <h2>Включите уведомления</h2>
+    <p>Уведомления нужны для новостей, общих заданий, индивидуальных заданий, конкурсов и важных сообщений команды.</p>
+    ${message?`<div class="mandatory-push-message">${esc(message)}</div>`:''}
+    ${!supported
+      ? `<div class="mandatory-push-message warning">${esc(mandatoryPushInstruction())}</div>`
+      : permission==='denied'
+        ? `<div class="mandatory-push-message warning">${esc(mandatoryPushInstruction())}</div>`
+        : `<button class="btn red mandatory-push-main" onclick="requestMandatoryPush()">Разрешить уведомления</button>`
+    }
+    <button class="btn light" onclick="retryMandatoryPush()">Проверить снова</button>
+    <small>Доступ в кабинет откроется после подключения push-уведомлений.</small>
+  </div>`;
+}
+async function requestMandatoryPush(){
+  if(!isPushSupported()){
+    renderMandatoryPushGate(mandatoryPushInstruction());
+    return false;
+  }
+  try{
+    let permission=Notification.permission;
+    if(permission==='default'){
+      permission=await Notification.requestPermission();
+    }
+    if(permission!=='granted'){
+      renderMandatoryPushGate(mandatoryPushInstruction());
+      return false;
+    }
+
+    const key=await api('push/key');
+    if(!key.publicKey){
+      renderMandatoryPushGate('Push-сервер временно не настроен. Сообщите управляющему.');
+      return false;
+    }
+
+    await navigator.serviceWorker.register('/sw.js?v='+APP_VERSION);
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+
+    if(sub){
+      const current=uint8ToB64Url(sub.options?.applicationServerKey);
+      if(!current || current!==key.publicKey){
+        try{await api('push/unsubscribe',{method:'POST',body:JSON.stringify({endpoint:sub.endpoint})})}catch{}
+        try{await sub.unsubscribe()}catch{}
+        sub=null;
+      }
+    }
+
+    if(!sub){
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:b64ToUint8Array(key.publicKey)
+      });
+    }
+
+    await api('push/subscribe',{
+      method:'POST',
+      body:JSON.stringify({subscription:sub.toJSON()})
+    });
+
+    closeMandatoryPushGate();
+    return true;
+  }catch(e){
+    console.error('mandatory push setup failed',e);
+    renderMandatoryPushGate(e.message||'Не удалось подключить уведомления. Попробуйте ещё раз.');
+    return false;
+  }
+}
+async function retryMandatoryPush(){
+  const ok=await hasValidPushSubscription();
+  if(ok){
+    closeMandatoryPushGate();
+    await continueAfterMandatoryPush();
+    return;
+  }
+  if(Notification.permission==='granted'){
+    const connected=await requestMandatoryPush();
+    if(connected)await continueAfterMandatoryPush();
+  }else{
+    renderMandatoryPushGate();
+  }
+}
+let pendingPostLoginContinuation=null;
+async function requirePushBeforeCabinet(continuation){
+  pendingPostLoginContinuation=continuation;
+  const valid=await hasValidPushSubscription();
+  if(valid){
+    pendingPostLoginContinuation=null;
+    return continuation();
+  }
+
+  renderMandatoryPushGate();
+
+  // The PIN submit is a user action. Trigger the permission request immediately
+  // while we are still inside that interaction path.
+  const connected=await requestMandatoryPush();
+  if(connected){
+    const next=pendingPostLoginContinuation;
+    pendingPostLoginContinuation=null;
+    if(next)return next();
+  }
+}
+async function continueAfterMandatoryPush(){
+  const next=pendingPostLoginContinuation;
+  pendingPostLoginContinuation=null;
+  if(next)return next();
 }
 
 async function showEmployeeWelcome(){
