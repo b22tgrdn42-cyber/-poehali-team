@@ -395,6 +395,15 @@ module.exports=async(req,res)=>{
     const chats=await sql`SELECT c.*, (SELECT count(*)::int FROM chat_members cm WHERE cm.chat_id=c.id) members_count, (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id) messages_count FROM chats c ORDER BY c.created_at DESC`;
     return ok(res,{users,chats})
   }
+  if(req.method==='POST'&&path==='admin/messenger/access'){
+    const employeeId=Number(b.employee_id);
+    if(!employeeId)return ok(res,{error:'Не указан сотрудник'},400);
+    const found=await sql`SELECT id FROM employees WHERE id=${employeeId}`;
+    if(!found.length)return ok(res,{error:'Сотрудник не найден'},404);
+    await sql`UPDATE employees SET messenger_access=${!!b.enabled} WHERE id=${employeeId}`;
+    const saved=(await sql`SELECT id,name,messenger_access FROM employees WHERE id=${employeeId}`)[0];
+    return ok(res,{ok:true,employee:saved})
+  }
   if(req.method==='DELETE'&&path==='admin/messenger/chat'){
     await sql`DELETE FROM chats WHERE id=${b.id}`; return ok(res,{ok:true})
   }
