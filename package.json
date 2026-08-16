@@ -1,6 +1,6 @@
 {
   "name": "poehali-team",
-  "version": "9.2.4",
+  "version": "9.2.5",
   "private": true,
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

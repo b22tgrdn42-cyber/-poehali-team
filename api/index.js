@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.2.4';
+const APP_VERSION = '9.2.5';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -456,6 +456,14 @@ module.exports=async(req,res)=>{
   const b=await body(req);
   const employeeManager=(u.role==='employee'||u.role==='supervisor')&&u.id?await isEmployeeManager(u.id):false;
 
+
+  if(req.method==='GET'&&path==='push/key'&&(u.role==='employee'||u.role==='supervisor')){
+    if(!VAPID_PUBLIC_KEY){
+      return ok(res,{error:'Push-сервер не настроен',publicKey:''},503)
+    }
+    return ok(res,{publicKey:VAPID_PUBLIC_KEY})
+  }
+
   if(req.method==='POST'&&path==='push/subscribe'&&(u.role==='employee'||u.role==='supervisor')){
     const b=await body(req),s=b.subscription||{};
     if(!s.endpoint||!s.keys?.p256dh||!s.keys?.auth)return ok(res,{error:'Некорректная подписка'},400);
@@ -867,7 +875,7 @@ module.exports=async(req,res)=>{
     return ok(res,{
       version:APP_VERSION,environment:APP_ENV,
       database:{ok:true,latency_ms:Date.now()-dbStart,server_time:db.server_time},
-      push:{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:pushCount[0].count,subject:process.env.VAPID_SUBJECT?'configured':'default'},
+      push:{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),public_key:!!VAPID_PUBLIC_KEY,private_key:!!VAPID_PRIVATE_KEY,subscriptions:pushCount[0].count,subject:process.env.VAPID_SUBJECT?'configured':'default'},
       counts:{employees:empCount[0].count,audit:auditCount[0].count,backups:backupCount[0].count},
       cron:Object.fromEntries(statuses.map(x=>[x.key,{...x.value,updated_at:x.updated_at}])),
       last_push:(statuses.find(x=>x.key==='last_push')||null)
