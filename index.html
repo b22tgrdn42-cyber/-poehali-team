@@ -832,6 +832,8 @@ label{
   position:relative;
   margin-left:auto;
   z-index:60;
+  padding-bottom:10px;
+  margin-bottom:-10px;
 }
 .manage-trigger{
   border-radius:13px;
@@ -846,7 +848,7 @@ label{
 .manage-dropdown{
   position:absolute;
   right:0;
-  top:calc(100% + 8px);
+  top:100%;
   min-width:280px;
   padding:8px;
   border-radius:18px;
@@ -1151,7 +1153,7 @@ function closeMobileMenu(){
 }
 function mobileNavigate(tab){
   closeMobileMenu();
-  if(state?.employee?.position==='Управляющий' && typeof umtab!=='undefined'){
+  if((state?.personal?.employee?.position==='Управляющий'||state?.employee?.position==='Управляющий') && typeof umtab!=='undefined'){
     umtab=tab;renderUnifiedManager();return;
   }
   if(typeof etab!=='undefined'){
@@ -1161,9 +1163,9 @@ function mobileNavigate(tab){
 function renderMobileMenu(){
   const box=$('#mobileMenuContent');if(!box)return;
   let html='';
-  if(state?.employee?.position==='Управляющий' && typeof umtab!=='undefined'){
+  if((state?.personal?.employee?.position==='Управляющий'||state?.employee?.position==='Управляющий') && typeof umtab!=='undefined'){
     const p=state.personal||state;
-    const e=p.employee||state.employee;
+    const e=p.employee||state.employee||state.personal?.employee;
     const main=[
       ['home','Главная'],['newsEmployee','Новости'],['tasksEmployee','Задания'],['prizesEmployee','Призы'],
       ...(e?.messenger_access?[['messengerEmployee','Чаты']]:[]),
@@ -1534,6 +1536,7 @@ function renderMessenger(){
     <div id=peoplePop class=people-pop></div>
     <div id=chatList class=chat-list></div>
     <div id=groupMaker class=group-maker></div>
+    <div id=chatMembersPanel class=group-maker></div>
    </aside>
    <section id=chatMain class=chat-main>
      <div class=card style="margin:auto;box-shadow:none;border:0;background:transparent;text-align:center"><h2>${esc(T('messenger.select_chat','Выберите чат'))}</h2><p class=muted>${esc(T('messenger.empty_text','Личные и групповые сообщения команды'))}</p></div>
@@ -1565,6 +1568,47 @@ function openGroupMaker(){
  g.innerHTML=`<b>Новая группа</b><input id=groupTitle class=field placeholder="Название группы">${messengerState.people.map(x=>`<label class=person-pick><input type=checkbox class=groupMember value="${x.id}"><span>${esc(x.name)}</span></label>`).join('')}<button class="btn red" style="width:100%" onclick="createGroup()">Создать</button>`;
  $('#peoplePop')?.classList.remove('open')
 }
+
+function openChatMembers(chatId){
+ const c=messengerState.chats.find(x=>x.id===chatId);if(!c)return;
+ const g=$('#chatMembersPanel');if(!g)return;
+ const memberIds=new Set((c.members||[]).map(x=>x.id));
+ const choices=(messengerState.people||[]).filter(x=>!memberIds.has(x.id));
+ g.classList.add('open');
+ g.innerHTML=`<div class=row><b style="flex:1">Участники чата</b><button class="btn light" onclick="$('#chatMembersPanel').classList.remove('open')">×</button></div>
+ ${c.members.map(x=>`<div class=person-pick><img class=avatar style="width:34px;height:34px" src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span></div>`).join('')}
+ <hr>
+ <b>Добавить сотрудника</b>
+ ${choices.length?choices.map(x=>`<div class=person-pick onclick="addChatMember(${chatId},${x.id})"><img class=avatar style="width:34px;height:34px" src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span></div>`).join(''):'<p class=muted>Все доступные сотрудники уже в чате.</p>'}`;
+}
+async function addChatMember(chatId,employeeId){
+ await api('messenger/members/add',{method:'POST',body:JSON.stringify({chat_id:chatId,employee_id:employeeId})});
+ toast('Сотрудник добавлен в чат');
+ messengerState=await api('messenger/state');
+ renderChatList();
+ await openChat(chatId);
+ openChatMembers(chatId);
+}
+async function leaveChat(chatId){
+ if(!confirm('Покинуть этот чат?'))return;
+ await api('messenger/leave',{method:'POST',body:JSON.stringify({chat_id:chatId})});
+ toast('Вы покинули чат');
+ currentChatId=null;
+ messengerState=await api('messenger/state');
+ renderMessenger();
+}
+async function renameChat(chatId,current){
+ const title=prompt('Новое название чата:',current||'');
+ if(title===null)return;
+ const val=title.trim();if(!val)return toast('Введите название');
+ await api('messenger/rename',{method:'POST',body:JSON.stringify({chat_id:chatId,title:val})});
+ toast('Название изменено');
+ messengerState=await api('messenger/state');
+ renderMessenger();
+ currentChatId=chatId;
+ await openChat(chatId);
+}
+
 async function createGroup(){
  const ids=[...document.querySelectorAll('.groupMember:checked')].map(x=>+x.value);
  const r=await api('messenger/group',{method:'POST',body:JSON.stringify({title:$('#groupTitle').value||'Новая группа',member_ids:ids})});
@@ -1577,7 +1621,9 @@ async function openChat(id){
  main.innerHTML=`<div class=chat-head>
    <button class="btn light chat-back" onclick="closeMobileChat()">←</button>
    <img class=avatar src="${c.photo||'/assets/logo.png'}">
-   <div><b>${esc(c.display_title)}</b><div class=muted style="font-size:11px">${c.type==='group'?c.members.length+' участников':(isOnline(c.members.find(x=>x.id!==state.employee.id)?.last_seen)?'в сети':'')}</div></div>
+   <div style="flex:1"><b>${esc(c.display_title)}</b><div class=muted style="font-size:11px">${c.type==='group'?c.members.length+' участников':(isOnline(c.members.find(x=>x.id!==state.employee.id)?.last_seen)?'в сети':'')}</div></div>
+   ${c.type==='group'?`<button class="btn light" onclick="openChatMembers(${c.id})">Участники</button><button class="btn light" onclick="renameChat(${c.id},'${esc((c.display_title||'').replace(/'/g,'&#39;'))}')">Переименовать</button>`:''}
+   <button class="btn danger" onclick="leaveChat(${c.id})">Покинуть</button>
  </div>
  <div id=typingLine class=typing></div>
  <div id=chatMessages class=chat-messages></div>
@@ -2070,13 +2116,37 @@ function messengerAdmin(){
    <h2>Управление мессенджером</h2>
    <p class=muted>Доступ к чатам имеет только тот сотрудник, которому управляющий явно включил разрешение.</p>
    <button class="btn red" onclick="loadMessengerAdmin()">Обновить данные</button>
+   <div class=card style="margin-top:14px">
+     <h3>Создать чат</h3>
+     <select id=adminChatType class=field onchange="renderAdminChatCreator()"><option value="group">Общий чат</option><option value="direct">Личный чат</option></select>
+     <input id=adminChatTitle class=field placeholder="Название общего чата">
+     <div id=adminChatMembers></div>
+     <button class="btn red" onclick="createAdminChat()">Создать чат</button>
+   </div>
    <div id=messengerAdminBox style="margin-top:14px">Нажмите «Обновить данные».</div>
  </div>`
 }
+
+function renderAdminChatCreator(){
+ const box=$('#adminChatMembers');if(!box||!window.adminMessengerState)return;
+ const type=$('#adminChatType')?.value||'group';
+ const users=(window.adminMessengerState.users||[]).filter(x=>x.active&&x.messenger_access);
+ box.innerHTML=`<div class=permission-grid>${users.map(u=>`<label class=toggle-line><input class=admin-chat-member type=checkbox value="${u.id}"><span>${esc(u.name)} · ${esc(u.position)}</span></label>`).join('')}</div>`;
+ const title=$('#adminChatTitle');if(title)title.style.display=type==='group'?'':'none';
+}
+async function createAdminChat(){
+ const type=$('#adminChatType').value;
+ const member_ids=[...document.querySelectorAll('.admin-chat-member:checked')].map(x=>+x.value);
+ const title=$('#adminChatTitle').value.trim();
+ await api('admin/messenger/chat',{method:'POST',body:JSON.stringify({type,title,member_ids})});
+ toast('Чат создан');
+ await loadMessengerAdmin()
+}
+
 async function loadMessengerAdmin(){
  const box=$('#messengerAdminBox');if(!box)return;
  try{
-  const r=await api('admin/messenger');
+  const r=await api('admin/messenger');window.adminMessengerState=r;renderAdminChatCreator();
   box.innerHTML=`<h3>Доступ сотрудников</h3>${r.users.map(u=>`<div class="listitem row"><img class=avatar src="${u.photo||'/assets/logo.png'}"><div style="flex:1"><b>${esc(u.name)}</b><br><small>${esc(u.position)} · ${u.active?'активен':'заблокирован'}${u.last_seen?' · был(а) '+new Date(u.last_seen).toLocaleString('ru'):''}</small></div><label><input class=messenger-access-check type=checkbox data-employee-id="${u.id}" ${u.messenger_access?'checked':''}> Доступ к чатам</label></div>`).join('')}
   <div class="row" style="margin-top:14px">
     <button class="btn red" onclick="saveMessengerAccess()">Сохранить доступ сотрудников</button>

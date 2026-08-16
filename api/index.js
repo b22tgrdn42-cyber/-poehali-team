@@ -396,6 +396,39 @@ module.exports=async(req,res)=>{
     return ok(res,{ok:true})
   }
 
+
+  if(req.method==='POST'&&path==='messenger/members/add'&&(u.role==='employee'||u.role==='supervisor')){
+    const chatId=Number(b.chat_id),employeeId=Number(b.employee_id);
+    if(!(await messengerAllowed(u.id))||!(await isChatMember(chatId,u.id)))return ok(res,{error:'Нет доступа'},403);
+    const chat=(await sql`SELECT * FROM chats WHERE id=${chatId}`)[0];
+    if(!chat)return ok(res,{error:'Чат не найден'},404);
+    if(chat.type!=='group')return ok(res,{error:'Добавлять участников можно только в групповой чат'},400);
+    if(!(await messengerAllowed(employeeId)))return ok(res,{error:'У сотрудника нет доступа к мессенджеру'},400);
+    await sql`INSERT INTO chat_members(chat_id,employee_id) VALUES(${chatId},${employeeId}) ON CONFLICT DO NOTHING`;
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='POST'&&path==='messenger/leave'&&(u.role==='employee'||u.role==='supervisor')){
+    const chatId=Number(b.chat_id);
+    if(!(await isChatMember(chatId,u.id)))return ok(res,{error:'Вы не состоите в этом чате'},400);
+    const chat=(await sql`SELECT * FROM chats WHERE id=${chatId}`)[0];
+    if(!chat)return ok(res,{error:'Чат не найден'},404);
+    await sql`DELETE FROM chat_members WHERE chat_id=${chatId} AND employee_id=${u.id}`;
+    const left=(await sql`SELECT count(*)::int count FROM chat_members WHERE chat_id=${chatId}`)[0].count;
+    if(left===0)await sql`DELETE FROM chats WHERE id=${chatId}`;
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='POST'&&path==='messenger/rename'&&(u.role==='employee'||u.role==='supervisor')){
+    const chatId=Number(b.chat_id),title=String(b.title||'').trim();
+    if(!(await isChatMember(chatId,u.id)))return ok(res,{error:'Нет доступа'},403);
+    const chat=(await sql`SELECT * FROM chats WHERE id=${chatId}`)[0];
+    if(!chat)return ok(res,{error:'Чат не найден'},404);
+    if(chat.type!=='group')return ok(res,{error:'Переименовать можно только групповой чат'},400);
+    if(!title)return ok(res,{error:'Введите название'},400);
+    await sql`UPDATE chats SET title=${title} WHERE id=${chatId}`;
+    return ok(res,{ok:true})
+  }
   if(req.method==='POST'&&path==='messenger/typing'&&(u.role==='employee'||u.role==='supervisor')){
     const chatId=Number(b.chat_id);
     if(!(await isChatMember(chatId,u.id)))return ok(res,{error:'Нет доступа'},403);
@@ -499,6 +532,17 @@ module.exports=async(req,res)=>{
 
   if(!(u.role==='manager'||employeeManager)) return ok(res,{error:'Нет доступа'},403);
 
+
+  if(req.method==='POST'&&path==='admin/messenger/chat'){
+    const ids=[...new Set((Array.isArray(b.member_ids)?b.member_ids:[]).map(Number).filter(Boolean))];
+    const type=b.type==='direct'?'direct':'group';
+    if(type==='direct'&&ids.length!==2)return ok(res,{error:'Для личного чата выберите двух сотрудников'},400);
+    if(type==='group'&&ids.length<2)return ok(res,{error:'Для общего чата выберите минимум двух сотрудников'},400);
+    for(const id of ids)if(!(await messengerAllowed(id)))return ok(res,{error:'У одного из участников нет доступа к мессенджеру'},400);
+    const c=await sql`INSERT INTO chats(type,title,created_by) VALUES(${type},${type==='group'?(b.title||'Общий чат'):''},${u.id||null}) RETURNING id`;
+    for(const id of ids)await sql`INSERT INTO chat_members(chat_id,employee_id) VALUES(${c[0].id},${id}) ON CONFLICT DO NOTHING`;
+    return ok(res,{ok:true,id:c[0].id})
+  }
   if(req.method==='GET'&&path==='admin/messenger'){
     const users=await sql`SELECT id,name,position,photo,messenger_access,active,last_seen FROM employees ORDER BY name`;
     const chats=await sql`SELECT c.*, (SELECT count(*)::int FROM chat_members cm WHERE cm.chat_id=c.id) members_count, (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id) messages_count FROM chats c ORDER BY c.created_at DESC`;
