@@ -2461,17 +2461,21 @@ async function applyCrop(){
   }
   await saveCroppedProfilePhoto(data);
   closeCropper();
+  if(cropState.fileInput)cropState.fileInput.value='';
 }
 
 async function saveCroppedProfilePhoto(data){
   try{
-    await api('profile/photo',{method:'POST',body:JSON.stringify({photo:data})});
+    await api('me/photo',{method:'POST',body:JSON.stringify({photo:data})});
     toast('Фото профиля сохранено');
-    if(state?.personal?.employee?.position==='Управляющий'){
-      state=await api('me');
-      return unifiedManager();
+    const fresh=await api('me');
+    if(fresh?.employee?.position==='Управляющий'){
+      state=fresh;
+      await unifiedManager();
+    }else{
+      state=fresh;
+      renderEmp();
     }
-    await employee();
   }catch(e){toast(e.message||'Не удалось сохранить фото')}
 }
 
