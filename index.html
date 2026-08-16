@@ -817,6 +817,89 @@ label{
   font-weight:850;
   text-align:center;
 }
+
+/* Unified manager dropdown navigation */
+.manager-nav-wrap{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.manager-nav-wrap .tabs{
+  flex:1;
+  margin-bottom:20px;
+}
+.manage-menu{
+  position:relative;
+  margin-left:auto;
+  z-index:60;
+}
+.manage-trigger{
+  border-radius:13px;
+  padding:11px 16px;
+  font-weight:900;
+  cursor:pointer;
+  background:linear-gradient(135deg,var(--red),var(--red-2));
+  color:#fff;
+  box-shadow:0 10px 24px rgba(183,22,27,.24);
+  white-space:nowrap;
+}
+.manage-dropdown{
+  position:absolute;
+  right:0;
+  top:calc(100% + 8px);
+  min-width:280px;
+  padding:8px;
+  border-radius:18px;
+  background:rgba(255,253,248,.98);
+  border:1px solid var(--line);
+  box-shadow:0 22px 60px rgba(69,40,8,.18);
+  opacity:0;
+  transform:translateY(-6px) scale(.98);
+  pointer-events:none;
+  transition:.18s ease;
+  backdrop-filter:blur(18px);
+}
+.manage-menu:hover .manage-dropdown,
+.manage-menu:focus-within .manage-dropdown{
+  opacity:1;
+  transform:none;
+  pointer-events:auto;
+}
+.manage-dropdown button{
+  width:100%;
+  text-align:left;
+  padding:11px 12px;
+  border-radius:11px;
+  background:transparent;
+  color:var(--ink);
+  font-weight:800;
+  cursor:pointer;
+}
+.manage-dropdown button:hover{
+  background:#fff0d7;
+}
+.manage-dropdown button.active{
+  background:linear-gradient(135deg,var(--red),var(--red-2));
+  color:#fff;
+}
+@media(max-width:760px){
+  .manager-nav-wrap{
+    align-items:flex-start;
+  }
+  .manage-menu{
+    position:sticky;
+    top:76px;
+    flex:0 0 auto;
+  }
+  .manage-dropdown{
+    position:fixed;
+    right:12px;
+    left:12px;
+    top:136px;
+    max-height:65vh;
+    overflow:auto;
+  }
+}
 </style></head><body><header class="top" data-ui-block="global.header"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
 const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
@@ -1269,19 +1352,25 @@ async function unifiedManager(){
 }
 function renderUnifiedManager(){
   const p=state.personal, e=p.employee;
-  const tabs=[
+  const mainTabs=[
     ['home','Главная'],
     ['newsEmployee','Новости'],
-    ['tasksEmployee','Мои задания'],
+    ['tasksEmployee','Задания'],
+    ['prizesEmployee','Призы'],
     ...(e.messenger_access?[['messengerEmployee','Чаты']]:[]),
+    ['competitionEmployee','Конкурс'],
+    ['ratingEmployee','Рейтинг'],
+    ['profileEmployee','Профиль']
+  ];
+  const adminTabs=[
     ['employees','Сотрудники'],
     ['tasksAdmin','Общие задания'],
     ['individualAdmin','Индивидуальные задания'],
     ['prizesAdmin','Призы'],
     ['achievementsAdmin','Достижения'],
-    ['newsAdmin','Новости · управление'],
+    ['newsAdmin','Новости'],
     ['competitionAdmin','Конкурс'],
-    ['messengerAdmin','Мессенджер · доступы'],
+    ['messengerAdmin','Мессенджер'],
     ['historyAdmin','История'],
     ['interfaceAdmin','Интерфейс'],
     ['settingsAdmin','Настройки']
@@ -1290,8 +1379,12 @@ function renderUnifiedManager(){
     home:`<div class="card hero"><div class=row><img class=avatar src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class=score>${e.points}</div><small>баллов</small></div></div><p>Личный кабинет и управление командой объединены.</p></div>
       <div class="card home-tasks"><h3>Мои индивидуальные задания</h3>${(p.individualTasks||[]).filter(x=>x.status!=='completed').map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=home-task><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')||'<p class=muted>Активных заданий нет.</p>'}</div>`,
     newsEmployee:`<h2>Новости</h2>${(p.news||[]).map(newsCard).join('')||'<div class=card>Новостей пока нет.</div>'}`,
-    tasksEmployee:`<h2>Мои задания</h2>${(p.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="card task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')||'<div class=card>Индивидуальных заданий пока нет.</div>'}`,
+    tasksEmployee:`<h2>Задания</h2><div class=card><h3>Мои индивидуальные задания</h3>${(p.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')||'Индивидуальных заданий пока нет.'}</div><h2>Общие задания</h2>${(p.tasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')}`,
+    prizesEmployee:`<h2>Призы</h2>${(p.prizes||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}`,
     messengerEmployee:`<div id="messengerRoot"></div>`,
+    competitionEmployee:`<h2>Конкурс</h2>${p.competition?`<div class="card hero"><h2>${esc(p.competition.title)}</h2><p>${esc(p.competition.description)}</p><div class=score>${p.competition.my_score}</div><b>Ваше место: ${p.competition.my_place||'—'}</b></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,
+    ratingEmployee:`<h2>Рейтинг команды</h2><div class=card>${(p.ranking||[]).map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,
+    profileEmployee:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*"><button class="btn red" onclick="savePhoto()">Сохранить фото</button></div>`,
     employees:empAdmin(),
     tasksAdmin:crudList('Задания',state.tasks,'task'),
     individualAdmin:individualAdmin(),
@@ -1305,9 +1398,16 @@ function renderUnifiedManager(){
     settingsAdmin:`<div class=card><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><button class="btn red" onclick="saveUnifiedSettings()">Сохранить</button></div>`
   };
   if(!content[umtab])umtab='home';
-  $('#app').innerHTML=`<div class=tabs>${tabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>${content[umtab]}`;
+  const isAdminTab=adminTabs.some(x=>x[0]===umtab);
+  $('#app').innerHTML=`<div class=manager-nav-wrap>
+    <div class=tabs>${mainTabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>
+    <div class=manage-menu>
+      <button class="manage-trigger ${isAdminTab?'active':''}" type=button>Управление ▾</button>
+      <div class=manage-dropdown>${adminTabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>
+    </div>
+  </div>${content[umtab]}`;
   animateSection();applyBlockVisibility(document);applyRemovedElements(document);
-  if(umtab==='messengerEmployee')setTimeout(()=>{state=p;loadMessenger();state={...window.state,personal:p}},30);
+  if(umtab==='messengerEmployee')setTimeout(()=>loadMessenger(),30);
   if(umtab==='messengerAdmin')setTimeout(()=>loadMessengerAdmin(),30);
   if(umtab==='interfaceAdmin')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);
 }
