@@ -144,6 +144,12 @@ async function init(){
    replacement_text text not null,
    updated_at timestamptz default now()
  )`;
+
+ await sql`CREATE TABLE IF NOT EXISTS ui_blocks (
+   block_key text primary key,
+   hidden boolean default false,
+   updated_at timestamptz default now()
+ )`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -197,6 +203,10 @@ module.exports=async(req,res)=>{
   if(req.method==='GET'&&path==='content/replacements'){
     const rows=await sql`SELECT source_text,replacement_text FROM ui_replacements ORDER BY source_text`;
     return ok(res,rows)
+  }
+  if(req.method==='GET'&&path==='content/blocks'){
+    const rows=await sql`SELECT block_key,hidden FROM ui_blocks ORDER BY block_key`;
+    return ok(res,Object.fromEntries(rows.map(x=>[x.block_key,x.hidden])))
   }
   if(!u) return ok(res,{error:'Требуется вход'},401);
   const b=await body(req);
@@ -392,6 +402,21 @@ module.exports=async(req,res)=>{
   }
   if(req.method==='DELETE'&&path==='admin/content/replacements'){
     if(b.source_text)await sql`DELETE FROM ui_replacements WHERE source_text=${b.source_text}`;
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='GET'&&path==='admin/content/blocks'){
+    return ok(res,await sql`SELECT block_key,hidden,updated_at FROM ui_blocks ORDER BY block_key`)
+  }
+  if(req.method==='POST'&&path==='admin/content/blocks'){
+    if(!b.block_key)return ok(res,{error:'Не указан блок'},400);
+    await sql`INSERT INTO ui_blocks(block_key,hidden,updated_at)
+      VALUES(${b.block_key},${!!b.hidden},now())
+      ON CONFLICT(block_key) DO UPDATE SET hidden=${!!b.hidden},updated_at=now()`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='DELETE'&&path==='admin/content/blocks'){
+    if(b.block_key)await sql`DELETE FROM ui_blocks WHERE block_key=${b.block_key}`;
     return ok(res,{ok:true})
   }
   if(req.method==='GET'&&path==='admin/content'){
