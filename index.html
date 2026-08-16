@@ -928,7 +928,142 @@ label{
 @media(max-width:650px){
   .install-steps{grid-template-columns:1fr}
 }
-</style></head><body><header class="top" data-ui-block="global.header"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
+
+/* Mobile hamburger navigation */
+.mobile-menu-toggle{
+  display:none;
+  width:44px;height:44px;
+  border-radius:14px;
+  background:linear-gradient(135deg,var(--ink),#303030);
+  color:#fff;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  flex-direction:column;
+  cursor:pointer;
+  box-shadow:0 8px 18px rgba(0,0,0,.14);
+  flex:0 0 auto;
+}
+.mobile-menu-toggle span{
+  display:block;
+  width:20px;height:2px;
+  border-radius:99px;
+  background:#fff;
+}
+.mobile-drawer{
+  display:none;
+}
+@media(max-width:760px){
+  .mobile-menu-toggle{
+    display:flex;
+  }
+  .tabs{
+    display:none!important;
+  }
+  .manager-nav-wrap .tabs{
+    display:none!important;
+  }
+  .manage-menu{
+    display:none!important;
+  }
+  .mobile-drawer{
+    display:block;
+    position:fixed;
+    inset:0;
+    z-index:1000;
+    pointer-events:none;
+  }
+  .mobile-drawer.open{
+    pointer-events:auto;
+  }
+  .mobile-drawer-backdrop{
+    position:absolute;
+    inset:0;
+    background:rgba(18,18,18,.38);
+    backdrop-filter:blur(3px);
+    opacity:0;
+    transition:.2s ease;
+  }
+  .mobile-drawer.open .mobile-drawer-backdrop{
+    opacity:1;
+  }
+  .mobile-drawer-panel{
+    position:absolute;
+    top:0;left:0;bottom:0;
+    width:min(84vw,340px);
+    padding:18px 14px 26px;
+    background:linear-gradient(180deg,#fffaf1,#f6e7cc);
+    box-shadow:22px 0 60px rgba(0,0,0,.22);
+    transform:translateX(-105%);
+    transition:.24s cubic-bezier(.22,1,.36,1);
+    overflow:auto;
+  }
+  .mobile-drawer.open .mobile-drawer-panel{
+    transform:translateX(0);
+  }
+  .mobile-drawer-head{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:14px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--line);
+  }
+  .mobile-drawer-head img{
+    width:54px;height:54px;object-fit:contain;
+  }
+  .mobile-drawer-head b{
+    font-size:16px;
+  }
+  .mobile-drawer-close{
+    margin-left:auto;
+    width:38px;height:38px;
+    border-radius:11px;
+    background:#fff;
+    border:1px solid var(--line);
+    cursor:pointer;
+    font-size:20px;
+  }
+  .mobile-menu-section-title{
+    margin:14px 8px 6px;
+    font-size:11px;
+    font-weight:900;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+  .mobile-menu-item{
+    width:100%;
+    text-align:left;
+    padding:13px 14px;
+    border-radius:13px;
+    background:transparent;
+    color:var(--ink);
+    font-weight:850;
+    cursor:pointer;
+    margin-bottom:4px;
+  }
+  .mobile-menu-item:hover,
+  .mobile-menu-item.active{
+    background:linear-gradient(135deg,var(--red),var(--red-2));
+    color:#fff;
+  }
+  .top{
+    gap:10px;
+  }
+}
+</style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
+  <div class="mobile-drawer-backdrop" onclick="closeMobileMenu()"></div>
+  <aside class="mobile-drawer-panel">
+    <div class="mobile-drawer-head">
+      <img src="/assets/logo.png">
+      <b>Команда · Поехали!</b>
+      <button class="mobile-drawer-close" onclick="closeMobileMenu()">×</button>
+    </div>
+    <div id="mobileMenuContent"></div>
+  </aside>
+</div>
+<main class="wrap" id="app"></main><script>
 const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
@@ -989,6 +1124,63 @@ window.addEventListener('appinstalled',()=>{
   localStorage.setItem('pwaInstalled','1');
   const card=$('#installAppCard');
   if(card)card.remove();
+});
+
+
+function openMobileMenu(){
+  renderMobileMenu();
+  $('#mobileDrawer')?.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeMobileMenu(){
+  $('#mobileDrawer')?.classList.remove('open');
+  document.body.style.overflow='';
+}
+function mobileNavigate(tab){
+  closeMobileMenu();
+  if(state?.employee?.position==='Управляющий' && typeof umtab!=='undefined'){
+    umtab=tab;renderUnifiedManager();return;
+  }
+  if(typeof etab!=='undefined'){
+    etab=tab;renderEmp();
+  }
+}
+function renderMobileMenu(){
+  const box=$('#mobileMenuContent');if(!box)return;
+  let html='';
+  if(state?.employee?.position==='Управляющий' && typeof umtab!=='undefined'){
+    const p=state.personal||state;
+    const e=p.employee||state.employee;
+    const main=[
+      ['home','Главная'],['newsEmployee','Новости'],['tasksEmployee','Задания'],['prizesEmployee','Призы'],
+      ...(e?.messenger_access?[['messengerEmployee','Чаты']]:[]),
+      ['competitionEmployee','Конкурс'],['ratingEmployee','Рейтинг'],['profileEmployee','Профиль']
+    ];
+    const admin=[
+      ['employees','Сотрудники'],['tasksAdmin','Общие задания'],['individualAdmin','Индивидуальные задания'],
+      ['prizesAdmin','Призы'],['achievementsAdmin','Достижения'],['newsAdmin','Новости'],
+      ['competitionAdmin','Конкурс'],['messengerAdmin','Мессенджер'],['historyAdmin','История'],
+      ['interfaceAdmin','Интерфейс'],['settingsAdmin','Настройки']
+    ];
+    html+=`<div class=mobile-menu-section-title>Разделы</div>${main.map(x=>`<button class="mobile-menu-item ${umtab===x[0]?'active':''}" onclick="mobileNavigate('${x[0]}')">${x[1]}</button>`).join('')}`;
+    html+=`<div class=mobile-menu-section-title>Управление</div>${admin.map(x=>`<button class="mobile-menu-item ${umtab===x[0]?'active':''}" onclick="mobileNavigate('${x[0]}')">${x[1]}</button>`).join('')}`;
+  }else if(state?.employee){
+    const e=state.employee;
+    const main=[
+      ['home',T('tab.home','Главная')],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],
+      ['prizes',T('tab.prizes','Призы')],
+      ...(e.messenger_access?[['messenger',T('tab.messenger','Чаты')]]:[]),
+      ...(hasStaffRights?.(e)?[['staff','Управление']]:[]),
+      ['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]
+    ];
+    html+=`<div class=mobile-menu-section-title>Разделы</div>${main.map(x=>`<button class="mobile-menu-item ${etab===x[0]?'active':''}" onclick="mobileNavigate('${x[0]}')">${x[1]}</button>`).join('')}`;
+  }else{
+    html='<p class=muted>Войдите в аккаунт, чтобы открыть меню.</p>';
+  }
+  box.innerHTML=html;
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeMobileMenu();
 });
 
 function T(key,fallback){return (uiText&&Object.prototype.hasOwnProperty.call(uiText,key))?uiText[key]:fallback}
