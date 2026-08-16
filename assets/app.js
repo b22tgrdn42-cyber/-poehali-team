@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.0.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.0.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -262,6 +262,17 @@ window.addEventListener('error',e=>console.error('window error',e.error||e.messa
 window.addEventListener('unhandledrejection',e=>console.error('unhandled rejection',e.reason));
 setTimeout(checkAppVersion,1600);
 
+
+function genderWord(employee,male,female){
+  return employee?.gender==='female'?female:male;
+}
+function acknowledgedWord(employee){
+  return genderWord(employee,'Ознакомился','Ознакомилась');
+}
+function completedWord(employee){
+  return genderWord(employee,'Выполнил','Выполнила');
+}
+
 function T(key,fallback){return (uiText&&Object.prototype.hasOwnProperty.call(uiText,key))?uiText[key]:fallback}
 async function loadUiText(){
   try{uiText=await api('content')}catch{uiText={}}
@@ -428,7 +439,7 @@ async function login(){document.body.classList.remove('authenticated');closeMobi
      <p class="lead">${esc(T('login.instruction','Выберите профиль и введите персональный PIN-код.'))}</p>
      <div class="auth-single-note">Вход для сотрудников команды</div>
      <div id="employeeForm" class="employee-form">
-       <div class="employee-grid">${em.map(e=>`<button class="employee-choice" data-id="${e.id}" onclick="selectEmployee(${e.id},this)"><img src="${e.photo||'/assets/logo.png'}"><span><b>${esc(e.name)}</b><small>${esc(e.position)}</small></span></button>`).join('')}</div>
+       <div class="employee-grid">${em.map(e=>`<button class="employee-choice" data-id="${e.id}" onclick="selectEmployee(${e.id},this)"><img src="${e.photo||'/assets/logo.png'}"><span><b>${esc(e.name)}</b><small>${esc(e.position)} · ${e.gender==='female'?'Женский':'Мужской'}</small></span></button>`).join('')}</div>
        <div class="pin-wrap"><input id="pin" class="field" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="PIN-код"><button class="pin-eye" onclick="togglePin('pin',this)" type="button">◉</button></div>
        <button class="btn red auth-submit" onclick="empLogin()">${esc(T('login.employee_button','Войти в личный кабинет'))}</button>
        <div class="auth-note">${esc(T('login.employee_note','PIN выдаёт управляющий. Не передавайте его другим сотрудникам.'))}</div>
@@ -536,6 +547,40 @@ async function enablePush(){
   }catch(e){toast('Не удалось включить уведомления: '+e.message)}
 }
 
+
+async function ensurePushSubscription(){
+  if(!token||!(role==='employee'||role==='supervisor'))return;
+  if(!('Notification' in window)||Notification.permission!=='granted')return;
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return;
+  try{
+    const key=await api('push/key');
+    if(!key.publicKey)return;
+    await navigator.serviceWorker.register('/sw.js?v='+APP_VERSION);
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    let recreate=false;
+    if(sub){
+      const current=uint8ToB64Url(sub.options?.applicationServerKey);
+      if(!current||current!==key.publicKey)recreate=true;
+    }
+    if(recreate&&sub){
+      try{await api('push/unsubscribe',{method:'POST',body:JSON.stringify({endpoint:sub.endpoint})})}catch{}
+      try{await sub.unsubscribe()}catch{}
+      sub=null;
+    }
+    if(!sub){
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:b64ToUint8Array(key.publicKey)
+      });
+    }
+    await api('push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON()})});
+    console.log('push subscription ensured',sub.endpoint.slice(0,36));
+  }catch(e){
+    console.warn('automatic push repair failed',e);
+  }
+}
+
 async function showEmployeeWelcome(){
  let employeeName='команду';
  try{
@@ -561,7 +606,7 @@ async function showEmployeeWelcome(){
 }
 
 async function empLogin(){try{if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+selectedEmployeeId,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;showEmployeeWelcome()}catch(e){toast(e.message)}}
-let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
+let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');setTimeout(ensurePushSubscription,250);if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 ${installHintHtml()}
 ${homeNewsHtml(state.news)}
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
@@ -584,7 +629,7 @@ function staffSection(){
  if(staffTab==='competition'&&p.can_manage_competition)return `<div class=card><h2>Конкурс</h2><input id=scTitle class=field value="${esc(staffState.competition?.title||'')}" placeholder="Название"><textarea id=scDesc class=field>${esc(staffState.competition?.description||'')}</textarea><button class="btn red" onclick="staffSaveCompetition()">Сохранить конкурс</button></div><div class=card><h3>Задание конкурса</h3><input id=sctTitle class=field placeholder="Название"><textarea id=sctDesc class=field placeholder="Описание"></textarea><input id=sctPts class=field type=number placeholder="Баллы"><button class=btn onclick="staffAddCompetitionTask()">Добавить</button></div>`;
  if(staffTab==='prizes'&&p.can_manage_prizes)return `<div class=card><h2>Новый приз</h2><input id=spTitle class=field placeholder="Название"><textarea id=spDesc class=field placeholder="Описание"></textarea><input id=spCost class=field type=number placeholder="Стоимость"><label>Фото (необязательно)</label><input id=spImg class=field type=file accept="image/*"><button class="btn red" onclick="staffCreatePrize()">Добавить</button></div>`;
  if(staffTab==='achievements'&&p.can_manage_achievements)return `<div class=card><h2>Новое достижение</h2><input id=saIcon class=field placeholder="Значок"><input id=saTitle class=field placeholder="Название"><textarea id=saDesc class=field placeholder="Описание"></textarea><button class="btn red" onclick="staffCreateAchievement()">Добавить</button></div>`;
- if(staffTab==='permissions'&&p.can_manage_permissions)return `<div class=card><h2>Права сотрудников</h2>${staffState.employees.map(e=>`<div class=card><b>${esc(e.name)}</b><br><small>${esc(e.position)}</small><div class=grid style="margin-top:10px"><label><input id="pt${e.id}" type=checkbox ${e.can_manage_tasks?'checked':''}> Общие задания</label><label><input id="pi${e.id}" type=checkbox ${e.can_assign_individual?'checked':''}> Индивидуальные</label><label><input id="pn${e.id}" type=checkbox ${e.can_manage_news?'checked':''}> Новости</label><label><input id="pc${e.id}" type=checkbox ${e.can_manage_competition?'checked':''}> Конкурсы</label><label><input id="pp${e.id}" type=checkbox ${e.can_manage_prizes?'checked':''}> Призы</label><label><input id="pa${e.id}" type=checkbox ${e.can_manage_achievements?'checked':''}> Достижения</label><label><input id="pr${e.id}" type=checkbox ${e.can_manage_permissions?'checked':''}> Выдавать права</label></div><button class="btn red" onclick="staffSavePermissions(${e.id})">Сохранить права</button></div>`).join('')}</div>`;
+ if(staffTab==='permissions'&&p.can_manage_permissions)return `<div class=card><h2>Права сотрудников</h2>${staffState.employees.map(e=>`<div class=card><b>${esc(e.name)}</b><br><small>${esc(e.position)} · ${e.gender==='female'?'Женский':'Мужской'}</small><div class=grid style="margin-top:10px"><label><input id="pt${e.id}" type=checkbox ${e.can_manage_tasks?'checked':''}> Общие задания</label><label><input id="pi${e.id}" type=checkbox ${e.can_assign_individual?'checked':''}> Индивидуальные</label><label><input id="pn${e.id}" type=checkbox ${e.can_manage_news?'checked':''}> Новости</label><label><input id="pc${e.id}" type=checkbox ${e.can_manage_competition?'checked':''}> Конкурсы</label><label><input id="pp${e.id}" type=checkbox ${e.can_manage_prizes?'checked':''}> Призы</label><label><input id="pa${e.id}" type=checkbox ${e.can_manage_achievements?'checked':''}> Достижения</label><label><input id="pr${e.id}" type=checkbox ${e.can_manage_permissions?'checked':''}> Выдавать права</label></div><button class="btn red" onclick="staffSavePermissions(${e.id})">Сохранить права</button></div>`).join('')}</div>`;
  return '<div class=card>Нет доступных функций</div>'
 }
 async function staffCreateTask(){file64($('#stImg'),async image=>{await api('staff/tasks',{method:'POST',body:JSON.stringify({title:$('#stTitle').value,description:$('#stDesc').value,points:+$('#stPts').value,image:image||null})});toast('Задание создано');await loadStaffPanel()})}
@@ -765,7 +810,7 @@ async function editMsg(id,old){const text=prompt('Изменить сообще�
 async function deleteMsg(id){if(!confirm('Удалить сообщение?'))return;await api('messenger/messages',{method:'DELETE',body:JSON.stringify({id})});await refreshMessages(false)}
 
 async function submitIndividual(id){await api('individual-task/submit',{method:'POST',body:JSON.stringify({id,comment:$('#ic'+id)?.value||''})});toast('Задание отправлено на проверку');employee()}
-function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div class=news-title-row><span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3>${n.pinned?'<span class=news-pin>📌</span>':''}</div><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}
+function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div class=news-title-row><span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3>${n.pinned?'<span class=news-pin>📌</span>':''}</div><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">${acknowledgedWord(state?.employee||state?.personal?.employee)}</button></p>`:n.requires_ack?`<p>✓ ${acknowledgedWord(state?.employee||state?.personal?.employee)}</p>`:''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}
 let cropState={
   source:null,
   sourceW:0,
@@ -1167,7 +1212,7 @@ async function loadDiagnostics(){
        <div class=status-card><b>Service Worker</b><p class="${sw?'status-ok':'status-bad'}">● ${sw?'Активен':'Не найден'}</p><small>Разрешение браузера: ${esc(browserPush)}</small></div>
        <div class=status-card><b>Cron дней рождения</b><p class="${d.cron?.birthday_cron?'status-ok':'status-bad'}">● ${d.cron?.birthday_cron?'Есть последний запуск':'Запуск ещё не зафиксирован'}</p><small>${d.cron?.birthday_cron?.updated_at?new Date(d.cron.birthday_cron.updated_at).toLocaleString('ru'):'—'}</small></div>
        <div class=status-card><b>Резервные снимки</b><p class=status-ok>${d.counts.backups}</p><small>Хранятся в Neon</small></div>
-       <div class=status-card><b>Журнал действий</b><p class=status-ok>${d.counts.audit}</p><small>Событий записано</small></div>
+       <div class=status-card><b>Журнал действий</b><p class=status-ok>${d.counts.audit}</p><small>Событий записано</small></div><div class=status-card><b>Последний push</b><p class="${d.last_push?.value?.sent>0?'status-ok':'status-bad'}">● ${d.last_push?.value?`${d.last_push.value.sent||0} доставлено / ${d.last_push.value.failed||0} ошибок`:'Нет данных'}</p><small>${d.last_push?.value?.context?esc(d.last_push.value.context):'—'}</small></div>
      </div>
      <div class=row style="margin-top:14px"><button class="btn red" onclick="loadDiagnostics()">Обновить диагностику</button><button class="btn light" onclick="testPush()">Тест push на это устройство</button></div>
    </div>`;
@@ -1254,7 +1299,7 @@ ${state.employees.map(e=>`<div class=emp-edit-card>
       </select>
     </label>
     <label>Новый PIN<input id="p${e.id}" class=field placeholder="Оставьте пустым, если не меняете"></label>
-    <label>Дата рождения<input id="bday${e.id}" class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ" value="${fromIsoDate(e.birthday)}"></label>
+    <label>Пол<select id="gender${e.id}" class=field><option value=male ${e.gender!=='female'?'selected':''}>Мужской</option><option value=female ${e.gender==='female'?'selected':''}>Женский</option></select></label><label>Дата рождения<input id="bday${e.id}" class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ" value="${fromIsoDate(e.birthday)}"></label>
   </div>
 
   <div class=permission-panel>
@@ -1297,7 +1342,7 @@ async function saveEmployeeCard(id,active){
    id,
    name:$('#name'+id).value.trim(),
    position:$('#pos'+id).value,
-   birthday:$('#bday'+id).value?dateValue('#bday'+id):null,
+   birthday:$('#bday'+id).value?dateValue('#bday'+id):null,gender:$('#gender'+id)?.value||'male',
    active,
    access_role:$('#ar'+id).value,
    team_member:$('#tm'+id).checked,
@@ -1335,7 +1380,7 @@ async function createItem(t){
  file64($('#cimg'),async image=>{
    b.image=image||null;
    let r=await api('admin/'+(t==='task'?'tasks':'prizes'),{method:'POST',body:JSON.stringify(b)});
-   if(t==='task'&&r.push)toast(r.push.sent>0?`Задание создано · уведомлений отправлено: ${r.push.sent}`:'Задание создано · подписанных устройств пока нет');
+   if(t==='task'&&r.push)toast(r.push.sent>0?`Задание создано · push доставлен на ${r.push.sent} устройств`:`Задание создано · push не доставлен${r.push.errors?.[0]?' · '+r.push.errors[0]:''}`);
    manager()
  })
 }
@@ -1634,6 +1679,6 @@ function addNews(){file64($('#nimg'),async p=>{let r=await api('admin/news',{met
 async function del(kind,id){if(!confirm('Переместить в архив? Данные можно будет восстановить.'))return;await api('admin/'+kind,{method:'DELETE',body:JSON.stringify({id})});manager()}async function saveSettings(){await api('admin/settings',{method:'POST',body:JSON.stringify({season:$('#season').value,level_step:+$('#levelstep').value,manager_pin:$('#newmpin').value||null})});toast('Настройки сохранены');manager()}
 
 async function supervisor(){document.body.classList.add('authenticated');try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
-function renderSupervisor(){let team=state.employees.filter(e=>e.team_member),others=state.employees.filter(e=>!e.team_member);$('#app').innerHTML=`<div class="card hero"><h2>Панель руководителя</h2><p>Просмотр прогресса команды без доступа к начислению баллов и изменению настроек.</p></div><div class=grid><div class=card><h3>Команда</h3>${team.map((e,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${e.photo||'/assets/logo.png'}"><span>${esc(e.name)}<br><small>${esc(e.position)}</small></span><b style="margin-left:auto">${e.points}</b></div>`).join('')}</div><div class=card><h3>Текущие задания</h3>${state.pending.map(t=>`<div class=listitem><b>${esc(t.employee_name)}</b> — ${esc(t.title)}<br><small>${t.status==='submitted'?'На проверке':'Назначено'}${t.due_date?' · до '+new Date(t.due_date).toLocaleDateString('ru'):''}</small></div>`).join('')||'Нет активных заданий'}</div></div><div class=grid><div class=card><h3>Последние достижения</h3>${state.achievements.slice(0,30).map(a=>{let e=state.employees.find(x=>x.id===a.employee_id);return `<div class=listitem>${esc(a.icon)} <b>${esc(e?.name||'')}</b> — ${esc(a.title)}</div>`}).join('')||'Пока нет достижений'}</div><div class=card><h3>Конкурс</h3>${state.competition?state.competition.board.map((x,i)=>`<div class=listitem>${i+1}. <b>${esc(x.name)}</b> — ${x.score}</div>`).join(''):'Нет активного конкурса'}${others.length?`<hr><small>Не участвуют в рейтинге: ${others.map(x=>esc(x.name)).join(', ')}</small>`:''}</div></div>`;animateSection()}
+function renderSupervisor(){let team=state.employees.filter(e=>e.team_member),others=state.employees.filter(e=>!e.team_member);$('#app').innerHTML=`<div class="card hero"><h2>Панель руководителя</h2><p>Просмотр прогресса команды без доступа к начислению баллов и изменению настроек.</p></div><div class=grid><div class=card><h3>Команда</h3>${team.map((e,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${e.photo||'/assets/logo.png'}"><span>${esc(e.name)}<br><small>${esc(e.position)} · ${e.gender==='female'?'Женский':'Мужской'}</small></span><b style="margin-left:auto">${e.points}</b></div>`).join('')}</div><div class=card><h3>Текущие задания</h3>${state.pending.map(t=>`<div class=listitem><b>${esc(t.employee_name)}</b> — ${esc(t.title)}<br><small>${t.status==='submitted'?'На проверке':'Назначено'}${t.due_date?' · до '+new Date(t.due_date).toLocaleDateString('ru'):''}</small></div>`).join('')||'Нет активных заданий'}</div></div><div class=grid><div class=card><h3>Последние достижения</h3>${state.achievements.slice(0,30).map(a=>{let e=state.employees.find(x=>x.id===a.employee_id);return `<div class=listitem>${esc(a.icon)} <b>${esc(e?.name||'')}</b> — ${esc(a.title)}</div>`}).join('')||'Пока нет достижений'}</div><div class=card><h3>Конкурс</h3>${state.competition?state.competition.board.map((x,i)=>`<div class=listitem>${i+1}. <b>${esc(x.name)}</b> — ${x.score}</div>`).join(''):'Нет активного конкурса'}${others.length?`<hr><small>Не участвуют в рейтинге: ${others.map(x=>esc(x.name)).join(', ')}</small>`:''}</div></div>`;animateSection()}
 
 (async()=>{await loadUiText();applyChromeText();startReplacementObserver();const q=new URLSearchParams(location.search),open=q.get('open');if(['tasks','news','competition','messenger'].includes(open))etab=open;if(token&&role==='manager'){logout();return}if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else login()})();

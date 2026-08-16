@@ -6,53 +6,85 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.0.0';
+const APP_VERSION = '9.0.3';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
 }
-async function sendPushToEmployee(employeeId,payload){
-  const result={configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:0,sent:0,failed:0,errors:[]};
-  if(!result.configured)return result;
-  const subs=await sql`SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE employee_id=${employeeId}`;
-  result.subscriptions=subs.length;
-  for(const s of subs){
+async function deliverPushRows(rows,payload,context='push'){
+  const result={
+    configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),
+    subscriptions:rows.length,
+    sent:0,failed:0,removed:0,
+    vapid_mismatch:0,
+    errors:[]
+  };
+  if(!result.configured){
+    result.errors.push('VAPID keys are not configured');
+    return result;
+  }
+
+  const jobs=rows.map(async s=>{
     try{
       await webpush.sendNotification(
         {endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},
         JSON.stringify(payload),
-        {TTL:3600,urgency:'high'}
+        {TTL:86400,urgency:'high'}
       );
       result.sent++;
     }catch(e){
       result.failed++;
-      result.errors.push(String(e.statusCode||'')+': '+String(e.body||e.message||'push error').slice(0,240));
-      if(e.statusCode===404||e.statusCode===410){
+      const code=Number(e.statusCode)||0;
+      const body=String(e.body||e.message||'push error');
+      if(/VapidPkHashMismatch|BadJwtToken/i.test(body))result.vapid_mismatch++;
+      if(code===404||code===410){
         await sql`DELETE FROM push_subscriptions WHERE endpoint=${s.endpoint}`;
+        result.removed++;
       }
-      console.error('push error',e.statusCode,e.body||e.message);
+      if(result.errors.length<8)result.errors.push(`${code||''}: ${body}`.slice(0,280));
+      console.error('push error',context,code,body);
     }
-  }
+  });
+  await Promise.allSettled(jobs);
+
+  try{
+    await setSystemStatus('last_push',{
+      context,
+      title:payload.title||'',
+      subscriptions:result.subscriptions,
+      sent:result.sent,
+      failed:result.failed,
+      removed:result.removed,
+      vapid_mismatch:result.vapid_mismatch,
+      at:new Date().toISOString()
+    });
+  }catch{}
+  console.log('push result',context,JSON.stringify(result));
   return result;
 }
-async function broadcastPush(payload){
-  const users=await sql`SELECT id FROM employees WHERE active=true AND archived_at IS NULL`;
-  const summary={
-    configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),
-    recipients:users.length,
-    subscriptions:0,
-    sent:0,
-    failed:0,
-    errors:[]
-  };
-  for(const u of users){
-    const r=await sendPushToEmployee(u.id,payload);
-    summary.subscriptions+=r.subscriptions||0;
-    summary.sent+=r.sent||0;
-    summary.failed+=r.failed||0;
-    if(r.errors?.length)summary.errors.push(...r.errors.slice(0,2));
-  }
-  return summary;
+
+async function sendPushToEmployee(employeeId,payload,context='individual'){
+  const subs=await sql`SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE employee_id=${employeeId}`;
+  const result=await deliverPushRows(subs,payload,context);
+  result.employee_id=Number(employeeId);
+  return result;
+}
+
+async function broadcastPush(payload,context='broadcast'){
+  // Send to every currently stored subscription belonging to an active employee.
+  // Query subscriptions directly so every subscribed device receives the event.
+  const subs=await sql`
+    SELECT ps.endpoint,ps.p256dh,ps.auth
+    FROM push_subscriptions ps
+    JOIN employees e ON e.id=ps.employee_id
+    WHERE e.active=true AND e.archived_at IS NULL`;
+  const result=await deliverPushRows(subs,payload,context);
+  result.recipients=(await sql`
+    SELECT count(DISTINCT ps.employee_id)::int count
+    FROM push_subscriptions ps
+    JOIN employees e ON e.id=ps.employee_id
+    WHERE e.active=true AND e.archived_at IS NULL`)[0]?.count||0;
+  return result;
 }
 
 
@@ -183,6 +215,7 @@ async function init(){
  await sql`ALTER TABLE individual_tasks ADD COLUMN IF NOT EXISTS image text`;
 
  await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS birthday date`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS gender text default 'male'`;
  await sql`CREATE TABLE IF NOT EXISTS birthday_notifications (
    employee_id int references employees(id) on delete cascade,
    year int not null,
@@ -629,21 +662,21 @@ module.exports=async(req,res)=>{
   if(req.method==='POST'&&path==='staff/tasks'&&(u.role==='employee'||u.role==='supervisor')){
     const p=await employeePermissions(u.id);if(!p.can_manage_tasks)return ok(res,{error:'Нет права создавать общие задания'},403);
     const r=await sql`INSERT INTO tasks(title,description,points,active,image) VALUES(${b.title},${b.description||''},${Number(b.points)||0},true,${b.image||null}) RETURNING id`;
-    const push=await broadcastPush({title:'Новое общее задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'general-task-'+r[0].id});
+    const push=await broadcastPush({title:'Новое общее задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'general-task-'+r[0].id},'general-task-staff');
     return ok(res,{ok:true,id:r[0].id,push})
   }
 
   if(req.method==='POST'&&path==='staff/individual-tasks'&&(u.role==='employee'||u.role==='supervisor')){
     const p=await employeePermissions(u.id);if(!p.can_assign_individual)return ok(res,{error:'Нет права назначать индивидуальные задания'},403);
     const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date,status,image) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null},'assigned',${b.image||null}) RETURNING id`;
-    await sendPushToEmployee(b.employee_id,{title:'Новое индивидуальное задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'individual-task-'+r[0].id});
-    return ok(res,{ok:true,id:r[0].id})
+    const push=await sendPushToEmployee(b.employee_id,{title:'Новое индивидуальное задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'individual-task-'+r[0].id},'individual-task-staff');
+    return ok(res,{ok:true,id:r[0].id,push})
   }
 
   if(req.method==='POST'&&path==='staff/news'&&(u.role==='employee'||u.role==='supervisor')){
     const p=await employeePermissions(u.id);if(!p.can_manage_news)return ok(res,{error:'Нет права публиковать новости'},403);
     const r=await sql`INSERT INTO news(title,body,category,image,event_date,pinned,requires_ack,active) VALUES(${b.title},${b.body||''},${b.category||'Важно'},${b.image||null},${b.event_date||null},false,false,true) RETURNING id`;
-    const push=await broadcastPush({title:'Новая новость 📰',body:b.title||'Новая публикация',url:'/?open=news',tag:'news-'+r[0].id});
+    const push=await broadcastPush({title:'Новая новость 📰',body:b.title||'Новая публикация',url:'/?open=news',tag:'news-'+r[0].id},'news-staff');
     return ok(res,{ok:true,id:r[0].id,push})
   }
 
@@ -820,7 +853,8 @@ module.exports=async(req,res)=>{
       database:{ok:true,latency_ms:Date.now()-dbStart,server_time:db.server_time},
       push:{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:pushCount[0].count,subject:process.env.VAPID_SUBJECT?'configured':'default'},
       counts:{employees:empCount[0].count,audit:auditCount[0].count,backups:backupCount[0].count},
-      cron:Object.fromEntries(statuses.map(x=>[x.key,{...x.value,updated_at:x.updated_at}]))
+      cron:Object.fromEntries(statuses.map(x=>[x.key,{...x.value,updated_at:x.updated_at}])),
+      last_push:(statuses.find(x=>x.key==='last_push')||null)
     })
   }
 
@@ -909,16 +943,12 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
   if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;await logAction(u.id,'points.change','employee',b.employee_id,{delta:Number(b.delta)||0,reason:b.reason||''});return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/tasks'){
     const r=await sql`INSERT INTO tasks(title,description,points,active,image) VALUES(${b.title},${b.description||''},${Number(b.points)||0},${b.active!==false},${b.image||null}) RETURNING id`;
-    let push=null;
-    if(b.active!==false){
-      push=await broadcastPush({
+    const push=await broadcastPush({
         title:'Новое общее задание 🚀',
         body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),
         url:'/?open=tasks',
         tag:'general-task-'+r[0].id
-      });
-      console.log('general task push',JSON.stringify(push));
-    }
+      },'general-task-admin');
     await logAction(u.id,'task.create','task',r[0].id,{title:b.title,points:Number(b.points)||0});
     return ok(res,{ok:true,id:r[0].id,push})
   }
@@ -933,16 +963,12 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
   if(req.method==='POST'&&path==='admin/news'){
     if((b.image||'').length>1400000)return ok(res,{error:'Фото слишком большое'},400);
     const r=await sql`INSERT INTO news(title,body,category,image,event_date,pinned,requires_ack,active) VALUES(${b.title},${b.body||''},${b.category||'Важно'},${b.image||null},${b.event_date||null},${!!b.pinned},${!!b.requires_ack},${b.active!==false}) RETURNING id`;
-    let push=null;
-    if(b.active!==false){
-      push=await broadcastPush({
+    const push=await broadcastPush({
         title:b.category==='Мероприятие'?'Новое мероприятие 📅':'Новая новость 📰',
         body:b.title||'В ленте появилась новая публикация',
         url:'/?open=news',
         tag:'news-'+r[0].id
-      });
-      console.log('news push',JSON.stringify(push));
-    }
+      },'news-admin');
     await logAction(u.id,'news.create','news',r[0].id,{title:b.title,category:b.category});
     return ok(res,{ok:true,id:r[0].id,push})
   }
@@ -956,7 +982,7 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),
       url:'/?open=tasks',
       tag:'individual-task-'+r[0].id
-    });
+    },'individual-task-admin');
     console.log('individual task push',JSON.stringify(push));
     await logAction(u.id,'individual_task.create','individual_task',r[0].id,{employee_id:b.employee_id,title:b.title});
     return ok(res,{ok:true,id:r[0].id,push})
