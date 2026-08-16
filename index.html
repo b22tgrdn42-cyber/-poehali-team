@@ -1731,6 +1731,23 @@ textarea.field{
     flex:1 1 150px;
   }
 }
+
+/* V8.20 — smart manual date inputs */
+.date-field{
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.04em!important;
+}
+.date-field.invalid{
+  border-color:#b7161b!important;
+  box-shadow:0 0 0 4px rgba(183,22,27,.10)!important;
+}
+.date-help{
+  display:block;
+  margin-top:-8px;
+  margin-bottom:10px;
+  font-size:11px;
+  color:var(--muted);
+}
 </style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
   <div class="mobile-drawer-backdrop" onclick="closeMobileMenu()"></div>
   <aside class="mobile-drawer-panel">
@@ -1909,6 +1926,59 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape')closeMobileMenu();
 });
 
+
+function formatDateTyping(value){
+  const digits=String(value||'').replace(/\D/g,'').slice(0,8);
+  if(digits.length<=2)return digits;
+  if(digits.length<=4)return digits.slice(0,2)+'.'+digits.slice(2);
+  return digits.slice(0,2)+'.'+digits.slice(2,4)+'.'+digits.slice(4);
+}
+function isValidDisplayDate(value){
+  const m=String(value||'').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if(!m)return false;
+  const d=+m[1],mo=+m[2],y=+m[3];
+  const dt=new Date(Date.UTC(y,mo-1,d));
+  return dt.getUTCFullYear()===y&&dt.getUTCMonth()===mo-1&&dt.getUTCDate()===d;
+}
+function toIsoDate(value){
+  if(!value)return null;
+  const v=String(value).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;
+  const m=v.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if(!m||!isValidDisplayDate(v))return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+function fromIsoDate(value){
+  if(!value)return '';
+  const s=String(value).slice(0,10);
+  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?`${m[3]}.${m[2]}.${m[1]}`:s;
+}
+function initSmartDates(root=document){
+  root.querySelectorAll?.('input.date-field').forEach(el=>{
+    if(el.dataset.dateReady==='1')return;
+    el.dataset.dateReady='1';
+    el.addEventListener('input',()=>{
+      el.value=formatDateTyping(el.value);
+      el.classList.remove('invalid');
+    });
+    el.addEventListener('blur',()=>{
+      if(el.value && !isValidDisplayDate(el.value))el.classList.add('invalid');
+      else el.classList.remove('invalid');
+    });
+  });
+}
+function dateValue(selector){
+  const el=typeof selector==='string'?$(selector):selector;
+  if(!el||!el.value)return null;
+  const iso=toIsoDate(el.value);
+  if(!iso){
+    el.classList.add('invalid');
+    throw new Error('Введите дату в формате ДД.ММ.ГГГГ');
+  }
+  return iso;
+}
+
 function T(key,fallback){return (uiText&&Object.prototype.hasOwnProperty.call(uiText,key))?uiText[key]:fallback}
 async function loadUiText(){
   try{uiText=await api('content')}catch{uiText={}}
@@ -1999,7 +2069,7 @@ function animateSection(){
   const app=$('#app');if(!app)return;
   app.classList.remove('section-entering','section-leaving');
   void app.offsetWidth;
-  app.classList.add('section-entering');
+  app.classList.add('section-entering');initSmartDates(app);
   const cards=[...app.querySelectorAll('.card,.emp-edit-card,.section-item,.home-task,.listitem')].slice(0,18);
   cards.forEach((el,i)=>{
     el.style.animation='none';
@@ -2183,6 +2253,7 @@ async function showEmployeeWelcome(){
    <p class=welcome-copy>${esc(employeeName)}, хорошей смены и отличных результатов 🚀</p>
  </div>`;
  document.body.appendChild(layer);
+ initSmartDates(layer);
  fireworks('login',55);
  setTimeout(()=>{
    layer.classList.add('welcome-out');
@@ -2212,7 +2283,7 @@ function renderStaffPanel(){const root=$('#staffRoot');if(!root)return;const tab
 function staffSection(){
  const p=staffState.permissions;
  if(staffTab==='tasks'&&p.can_manage_tasks)return `<div class=card><h2>Новое общее задание</h2><input id=stTitle class=field placeholder="Название"><textarea id=stDesc class=field placeholder="Описание"></textarea><input id=stPts class=field type=number placeholder="Баллы"><label>Фото (необязательно)</label><input id=stImg class=field type=file accept="image/*"><button class="btn red" onclick="staffCreateTask()">Создать</button></div>`;
- if(staffTab==='individual'&&p.can_assign_individual)return `<div class=card><h2>Индивидуальное задание</h2><select id=siEmp class=field>${staffState.employees.filter(e=>e.active).map(e=>`<option value=${e.id}>${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id=siTitle class=field placeholder="Название"><textarea id=siDesc class=field placeholder="Описание"></textarea><div class=grid><input id=siPts class=field type=number placeholder="Баллы"><input id=siDue class=field type=date></div><label>Фото (необязательно)</label><input id=siImg class=field type=file accept="image/*"><button class="btn red" onclick="staffCreateIndividual()">Назначить</button></div>`;
+ if(staffTab==='individual'&&p.can_assign_individual)return `<div class=card><h2>Индивидуальное задание</h2><select id=siEmp class=field>${staffState.employees.filter(e=>e.active).map(e=>`<option value=${e.id}>${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id=siTitle class=field placeholder="Название"><textarea id=siDesc class=field placeholder="Описание"></textarea><div class=grid><input id=siPts class=field type=number placeholder="Баллы"><input id=siDue class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ"><small class=date-help>ДД.ММ.ГГГГ</small></div><label>Фото (необязательно)</label><input id=siImg class=field type=file accept="image/*"><button class="btn red" onclick="staffCreateIndividual()">Назначить</button></div>`;
  if(staffTab==='news'&&p.can_manage_news)return `<div class=card><h2>Новая новость</h2><input id=snTitle class=field placeholder="Заголовок"><textarea id=snBody class=field placeholder="Текст"></textarea><label>Фото (необязательно)</label><input id=snImg class=field type=file accept="image/*"><button class="btn red" onclick="staffCreateNews()">Опубликовать</button></div>`;
  if(staffTab==='competition'&&p.can_manage_competition)return `<div class=card><h2>Конкурс</h2><input id=scTitle class=field value="${esc(staffState.competition?.title||'')}" placeholder="Название"><textarea id=scDesc class=field>${esc(staffState.competition?.description||'')}</textarea><button class="btn red" onclick="staffSaveCompetition()">Сохранить конкурс</button></div><div class=card><h3>Задание конкурса</h3><input id=sctTitle class=field placeholder="Название"><textarea id=sctDesc class=field placeholder="Описание"></textarea><input id=sctPts class=field type=number placeholder="Баллы"><button class=btn onclick="staffAddCompetitionTask()">Добавить</button></div>`;
  if(staffTab==='prizes'&&p.can_manage_prizes)return `<div class=card><h2>Новый приз</h2><input id=spTitle class=field placeholder="Название"><textarea id=spDesc class=field placeholder="Описание"></textarea><input id=spCost class=field type=number placeholder="Стоимость"><label>Фото (необязательно)</label><input id=spImg class=field type=file accept="image/*"><button class="btn red" onclick="staffCreatePrize()">Добавить</button></div>`;
@@ -2221,7 +2292,7 @@ function staffSection(){
  return '<div class=card>Нет доступных функций</div>'
 }
 async function staffCreateTask(){file64($('#stImg'),async image=>{await api('staff/tasks',{method:'POST',body:JSON.stringify({title:$('#stTitle').value,description:$('#stDesc').value,points:+$('#stPts').value,image:image||null})});toast('Задание создано');await loadStaffPanel()})}
-async function staffCreateIndividual(){file64($('#siImg'),async image=>{await api('staff/individual-tasks',{method:'POST',body:JSON.stringify({employee_id:+$('#siEmp').value,title:$('#siTitle').value,description:$('#siDesc').value,points:+$('#siPts').value,due_date:$('#siDue').value||null,image:image||null})});toast('Задание назначено');await loadStaffPanel()})}
+async function staffCreateIndividual(){file64($('#siImg'),async image=>{await api('staff/individual-tasks',{method:'POST',body:JSON.stringify({employee_id:+$('#siEmp').value,title:$('#siTitle').value,description:$('#siDesc').value,points:+$('#siPts').value,due_date:dateValue('#siDue'),image:image||null})});toast('Задание назначено');await loadStaffPanel()})}
 async function staffCreateNews(){file64($('#snImg'),async image=>{await api('staff/news',{method:'POST',body:JSON.stringify({title:$('#snTitle').value,body:$('#snBody').value,category:'Для команды',image:image||null})});toast('Новость опубликована');await loadStaffPanel()})}
 async function staffSaveCompetition(){await api('staff/competition/settings',{method:'POST',body:JSON.stringify({title:$('#scTitle').value,description:$('#scDesc').value,active:true})});toast('Конкурс сохранён');await loadStaffPanel()}
 async function staffAddCompetitionTask(){await api('staff/competition/tasks',{method:'POST',body:JSON.stringify({title:$('#sctTitle').value,description:$('#sctDesc').value,points:+$('#sctPts').value})});toast('Задание конкурса добавлено');await loadStaffPanel()}
@@ -2793,7 +2864,7 @@ function empAdmin(){return `<div class=card>
   <input id=en class=field placeholder="Имя сотрудника">
   <select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option></select>
   <input id=epin class=field placeholder="Индивидуальный PIN">
-  <label>Дата рождения<input id=ebday class=field type=date></label>
+  <label>Дата рождения<input id=ebday class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ"><small class=date-help>Например: 25031990 → 25.03.1990</small></label>
 </div>
 <div class=grid>
   <label>Уровень доступа<select id=ear class=field><option value="employee">Сотрудник</option><option value="supervisor">Наблюдатель / руководитель</option></select></label>
@@ -2826,7 +2897,7 @@ ${state.employees.map(e=>`<div class=emp-edit-card>
       </select>
     </label>
     <label>Новый PIN<input id="p${e.id}" class=field placeholder="Оставьте пустым, если не меняете"></label>
-    <label>Дата рождения<input id="bday${e.id}" class=field type=date value="${e.birthday?String(e.birthday).slice(0,10):''}"></label>
+    <label>Дата рождения<input id="bday${e.id}" class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ" value="${fromIsoDate(e.birthday)}"></label>
   </div>
 
   <div class=permission-panel>
@@ -2862,14 +2933,14 @@ ${state.employees.map(e=>`<div class=emp-edit-card>
     <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button>
   </div>
 </div>`).join('')}`}
-async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked,messenger_access:$('#ema').checked,birthday:$('#ebday').value||null})});toast('Сотрудник добавлен');manager()}
+async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked,messenger_access:$('#ema').checked,birthday:$('#ebday').value?dateValue('#ebday'):null})});toast('Сотрудник добавлен');manager()}
 async function points(id){let delta=+$('#d'+id).value;await api('admin/points',{method:'POST',body:JSON.stringify({employee_id:id,delta,reason:$('#r'+id).value})});pointCelebration(delta);manager()}
 async function saveEmployeeCard(id,active){
  const payload={
    id,
    name:$('#name'+id).value.trim(),
    position:$('#pos'+id).value,
-   birthday:$('#bday'+id).value||null,
+   birthday:$('#bday'+id).value?dateValue('#bday'+id):null,
    active,
    access_role:$('#ar'+id).value,
    team_member:$('#tm'+id).checked,
@@ -3184,12 +3255,12 @@ async function deleteAdminChat(id){
  toast('Чат удалён');await loadMessengerAdmin()
 }
 
-function individualAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Назначить индивидуальное задание</h2><p class="muted" style="margin-top:0">Персональная задача с дедлайном и бонусными баллами.</p><select id=ie class=field>${state.employees.filter(e=>e.active).map(e=>`<option value=${e.id}>${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id=it class=field placeholder="Название"><textarea id=idsc class=field placeholder="Описание"></textarea><div class=grid><input id=ipts class=field type=number placeholder="Баллы"><input id=idue class=field type=date></div><label>Фото (необязательно)</label><input id=iimg class=field type=file accept="image/*"><div class=file-note>Можно оставить пустым.</div><button class="btn red" onclick="addIndividual()">Назначить</button></div>${(state.individualTasks||[]).map(t=>`<div class=section-item>${t.image?`<img class=section-item-image src="${t.image}">`:''}<div class="card task-personal"><b>${esc(t.employee_name)} — ${esc(t.title)}</b><p>${esc(t.description)}</p><span class=pill>+${t.points}</span> ${t.due_date?`<small>до ${new Date(t.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${t.status}${t.employee_comment?`<br><i>Комментарий сотрудника: ${esc(t.employee_comment)}</i>`:''}</p>${t.status==='submitted'?`<button class="btn red" onclick="approveIndividual(${t.id})">Подтвердить и начислить</button>`:''} <button class="btn danger" onclick="deleteIndividual(${t.id})">Удалить</button></div>`).join('')}`}
+function individualAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Назначить индивидуальное задание</h2><p class="muted" style="margin-top:0">Персональная задача с дедлайном и бонусными баллами.</p><select id=ie class=field>${state.employees.filter(e=>e.active).map(e=>`<option value=${e.id}>${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id=it class=field placeholder="Название"><textarea id=idsc class=field placeholder="Описание"></textarea><div class=grid><input id=ipts class=field type=number placeholder="Баллы"><input id=idue class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ"><small class=date-help>Можно ввести цифрами: 16081995 → 16.08.1995</small></div><label>Фото (необязательно)</label><input id=iimg class=field type=file accept="image/*"><div class=file-note>Можно оставить пустым.</div><button class="btn red" onclick="addIndividual()">Назначить</button></div>${(state.individualTasks||[]).map(t=>`<div class=section-item>${t.image?`<img class=section-item-image src="${t.image}">`:''}<div class="card task-personal"><b>${esc(t.employee_name)} — ${esc(t.title)}</b><p>${esc(t.description)}</p><span class=pill>+${t.points}</span> ${t.due_date?`<small>до ${new Date(t.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${t.status}${t.employee_comment?`<br><i>Комментарий сотрудника: ${esc(t.employee_comment)}</i>`:''}</p>${t.status==='submitted'?`<button class="btn red" onclick="approveIndividual(${t.id})">Подтвердить и начислить</button>`:''} <button class="btn danger" onclick="deleteIndividual(${t.id})">Удалить</button></div>`).join('')}`}
 async function addIndividual(){
  file64($('#iimg'),async image=>{
    await api('admin/individual-tasks',{method:'POST',body:JSON.stringify({
      employee_id:+$('#ie').value,title:$('#it').value,description:$('#idsc').value,
-     points:+$('#ipts').value,due_date:$('#idue').value||null,image:image||null
+     points:+$('#ipts').value,due_date:dateValue('#idue'),image:image||null
    })});
    toast('Индивидуальное задание назначено');manager()
  })
