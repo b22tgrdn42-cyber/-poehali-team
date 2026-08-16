@@ -171,6 +171,10 @@ async function init(){
    can_assign_individual = CASE WHEN position IN ('Управляющий','Старший официант','Шеф-бармен') THEN true ELSE can_assign_individual END,
    can_manage_permissions = CASE WHEN position='Управляющий' THEN true ELSE can_manage_permissions END
  `;
+
+ await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS image text`;
+ await sql`ALTER TABLE prizes ADD COLUMN IF NOT EXISTS image text`;
+ await sql`ALTER TABLE individual_tasks ADD COLUMN IF NOT EXISTS image text`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -415,14 +419,14 @@ module.exports=async(req,res)=>{
 
   if(req.method==='POST'&&path==='staff/tasks'&&(u.role==='employee'||u.role==='supervisor')){
     const p=await employeePermissions(u.id);if(!p.can_manage_tasks)return ok(res,{error:'Нет права создавать общие задания'},403);
-    const r=await sql`INSERT INTO tasks(title,description,points,active) VALUES(${b.title},${b.description||''},${Number(b.points)||0},true) RETURNING id`;
+    const r=await sql`INSERT INTO tasks(title,description,points,active,image) VALUES(${b.title},${b.description||''},${Number(b.points)||0},true,${b.image||null}) RETURNING id`;
     const push=await broadcastPush({title:'Новое общее задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'general-task-'+r[0].id});
     return ok(res,{ok:true,id:r[0].id,push})
   }
 
   if(req.method==='POST'&&path==='staff/individual-tasks'&&(u.role==='employee'||u.role==='supervisor')){
     const p=await employeePermissions(u.id);if(!p.can_assign_individual)return ok(res,{error:'Нет права назначать индивидуальные задания'},403);
-    const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date,status) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null},'assigned') RETURNING id`;
+    const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date,status,image) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null},'assigned',${b.image||null}) RETURNING id`;
     await sendPushToEmployee(b.employee_id,{title:'Новое индивидуальное задание 🚀',body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),url:'/?open=tasks',tag:'individual-task-'+r[0].id});
     return ok(res,{ok:true,id:r[0].id})
   }
@@ -436,7 +440,7 @@ module.exports=async(req,res)=>{
 
   if(req.method==='POST'&&path==='staff/prizes'&&(u.role==='employee'||u.role==='supervisor')){
     const p=await employeePermissions(u.id);if(!p.can_manage_prizes)return ok(res,{error:'Нет права создавать призы'},403);
-    const r=await sql`INSERT INTO prizes(title,description,cost,active) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},true) RETURNING id`;
+    const r=await sql`INSERT INTO prizes(title,description,cost,active,image) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},true,${b.image||null}) RETURNING id`;
     return ok(res,{ok:true,id:r[0].id})
   }
 
@@ -603,7 +607,7 @@ module.exports=async(req,res)=>{
   if(req.method==='DELETE'&&path==='admin/employees'){await sql`DELETE FROM employees WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/tasks'){
-    const r=await sql`INSERT INTO tasks(title,description,points,active) VALUES(${b.title},${b.description||''},${Number(b.points)||0},${b.active!==false}) RETURNING id`;
+    const r=await sql`INSERT INTO tasks(title,description,points,active,image) VALUES(${b.title},${b.description||''},${Number(b.points)||0},${b.active!==false},${b.image||null}) RETURNING id`;
     let push=null;
     if(b.active!==false){
       push=await broadcastPush({
@@ -618,7 +622,7 @@ module.exports=async(req,res)=>{
   }
   if(req.method==='PUT'&&path==='admin/tasks'){await sql`UPDATE tasks SET title=${b.title},description=${b.description||''},points=${Number(b.points)||0},active=${b.active!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/tasks'){await sql`DELETE FROM tasks WHERE id=${b.id}`;return ok(res,{ok:true})}
-  if(req.method==='POST'&&path==='admin/prizes'){await sql`INSERT INTO prizes(title,description,cost,active) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},${b.active!==false})`;return ok(res,{ok:true})}
+  if(req.method==='POST'&&path==='admin/prizes'){await sql`INSERT INTO prizes(title,description,cost,active,image) VALUES(${b.title},${b.description||''},${Number(b.cost)||0},${b.active!==false},${b.image||null})`;return ok(res,{ok:true})}
   if(req.method==='PUT'&&path==='admin/prizes'){await sql`UPDATE prizes SET title=${b.title},description=${b.description||''},cost=${Number(b.cost)||0},active=${b.active!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/prizes'){await sql`DELETE FROM prizes WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/achievements'){await sql`INSERT INTO achievements(title,description,icon) VALUES(${b.title},${b.description||''},${b.icon||'★'})`;return ok(res,{ok:true})}
@@ -643,7 +647,7 @@ module.exports=async(req,res)=>{
   if(req.method==='DELETE'&&path==='admin/news'){await sql`DELETE FROM news WHERE id=${b.id}`;return ok(res,{ok:true})}
 
   if(req.method==='POST'&&path==='admin/individual-tasks'){
-    const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null}) RETURNING id`;
+    const r=await sql`INSERT INTO individual_tasks(employee_id,title,description,points,due_date,image) VALUES(${b.employee_id},${b.title},${b.description||''},${Number(b.points)||0},${b.due_date||null},${b.image||null}) RETURNING id`;
     const push=await sendPushToEmployee(b.employee_id,{
       title:'Новое индивидуальное задание 🚀',
       body:(b.title||'Новое задание')+(Number(b.points)?` · +${Number(b.points)} баллов`:''),
