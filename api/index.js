@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.0.4';
+const APP_VERSION = '9.0.5';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -915,6 +915,17 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
  const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.archived_at IS NULL ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
  return ok(res,{employees,tasks,prizes,achievements,news,history,settings:settings[0],competition,individualTasks})}
   if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,birthday,gender,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${b.birthday||null},${b.gender==='female'?'female':'male'},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;await logAction(u.id,'employee.create','employee',r[0].id,{name:b.name,position:b.position});return ok(res,r[0])}
+
+  if(req.method==='POST'&&path==='admin/employees/gender'){
+    const id=Number(b.id);
+    const gender=b.gender==='female'?'female':b.gender==='male'?'male':null;
+    if(!id||!gender)return ok(res,{error:'Некорректные данные пола'},400);
+    const rows=await sql`UPDATE employees SET gender=${gender} WHERE id=${id} RETURNING id,name,gender`;
+    if(!rows.length)return ok(res,{error:'Сотрудник не найден'},404);
+    await logAction(u.id,'employee.gender','employee',id,{gender});
+    return ok(res,{ok:true,employee:rows[0]})
+  }
+
   if(req.method==='PUT'&&path==='admin/employees'){
     const existing=(await sql`SELECT * FROM employees WHERE id=${b.id}`)[0];
     if(!existing)return ok(res,{error:'Сотрудник не найден'},404);
@@ -923,7 +934,7 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       name=${b.name||existing.name},
       position=${b.position||existing.position},
       birthday=${b.birthday||null},
-      gender=${b.gender==='female'?'female':'male'},
+      gender=${b.gender==='female'?'female':b.gender==='male'?'male':(existing.gender||'male')},
       active=${b.active!==false},
       access_role=${b.access_role||existing.access_role||'employee'},
       team_member=${b.team_member!==false},

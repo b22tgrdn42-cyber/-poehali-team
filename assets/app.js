@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.0.4';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.0.5';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1357,18 +1357,26 @@ async function saveEmployeeCard(id,active){
  };
  const pin=$('#p'+id).value.trim();
  if(pin)payload.pin=pin;
+ const genderSaved=await api('admin/employees/gender',{
+   method:'POST',
+   body:JSON.stringify({id,gender:payload.gender})
+ });
  const saved=await api('admin/employees',{method:'PUT',body:JSON.stringify(payload)});
+ const persistedGender=saved?.employee?.gender||genderSaved?.employee?.gender;
+ if(persistedGender!==payload.gender){
+   throw new Error('Сервер не подтвердил сохранение пола. Попробуйте ещё раз.');
+ }
  if(saved?.employee){
    const idx=state.employees?.findIndex(x=>x.id===id);
    if(idx>=0)state.employees[idx]={...state.employees[idx],...saved.employee};
  }
- toast(`Карточка сохранена · пол: ${saved?.employee?.gender==='female'?'Женский':'Мужской'}`);
+ toast(`Карточка сохранена · пол: ${persistedGender==='female'?'Женский':'Мужской'}`);
  await manager();
 }
 async function toggleEmployeeActive(id,active){
  const e=state.employees.find(x=>x.id===id);if(!e)return;
  await api('admin/employees',{method:'PUT',body:JSON.stringify({
-   id,name:e.name,position:e.position,birthday:e.birthday||null,active,
+   id,name:e.name,position:e.position,birthday:e.birthday||null,gender:e.gender||'male',active,
    access_role:e.access_role,team_member:e.team_member,messenger_access:e.messenger_access,
    can_manage_tasks:e.can_manage_tasks,can_assign_individual:e.can_assign_individual,
    can_manage_news:e.can_manage_news,can_manage_competition:e.can_manage_competition,
