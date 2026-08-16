@@ -934,14 +934,15 @@ label{
   display:none;
   width:44px;height:44px;
   border-radius:14px;
-  background:linear-gradient(135deg,var(--ink),#303030);
+  background:linear-gradient(135deg,#b7161b,#8f1015);
   color:#fff;
+  border:1px solid rgba(255,255,255,.35);
   align-items:center;
   justify-content:center;
   gap:4px;
   flex-direction:column;
   cursor:pointer;
-  box-shadow:0 8px 18px rgba(0,0,0,.14);
+  box-shadow:0 8px 20px rgba(143,16,21,.24), inset 0 1px 0 rgba(255,255,255,.28);
   flex:0 0 auto;
 }
 .mobile-menu-toggle span{
@@ -954,7 +955,7 @@ label{
   display:none;
 }
 @media(max-width:760px){
-  .mobile-menu-toggle{
+  body.authenticated .mobile-menu-toggle{
     display:flex;
   }
   .tabs{
@@ -1070,6 +1071,18 @@ const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'',
 function isStandaloneApp(){
   return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone===true;
 }
+
+function homeNewsHtml(news){
+  const items=news||[];
+  return `<div class="home-news-feed">
+    <div class=row style="align-items:center;margin:18px 0 10px">
+      <h2 style="margin:0">Новости</h2>
+      <span class=pill style="margin-left:auto">${items.length}</span>
+    </div>
+    ${items.length?items.map(newsCard).join(''):'<div class=card><p class=muted>Новостей пока нет.</p></div>'}
+  </div>`;
+}
+
 function installHintHtml(){
   if(isStandaloneApp())return '';
   return `<div id="installAppCard" class="card install-card">
@@ -1310,9 +1323,9 @@ function pointCelebration(delta){
   const p=document.createElement('div');p.className='points-pop';p.textContent='+'+delta+' баллов 🚀';document.body.appendChild(p);setTimeout(()=>p.remove(),1250);
 }
 const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-async function api(path,opt={}){opt.headers={...(opt.headers||{}),'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})};let r=await fetch(A+path,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Ошибка');return j}function toast(t){let d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2200)}function logout(){localStorage.clear();token='';role='';login()}
+async function api(path,opt={}){opt.headers={...(opt.headers||{}),'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})};let r=await fetch(A+path,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Ошибка');return j}function toast(t){let d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2200)}function logout(){document.body.classList.remove('authenticated');closeMobileMenu();localStorage.clear();token='';role='';login()}
 function file64(inp,cb){let f=inp.files[0];if(!f)return cb(null);if(f.size>900000)return toast('Фото должно быть меньше 900 КБ');let r=new FileReader;r.onload=()=>cb(r.result);r.readAsDataURL(f)}
-async function login(){
+async function login(){document.body.classList.remove('authenticated');closeMobileMenu();
  role='';selectedEmployeeId=null;$('#who').innerHTML='';
  let em=await api('public/employees');
  $('#app').innerHTML=`<div class="auth-shell">
@@ -1460,8 +1473,9 @@ async function showEmployeeWelcome(){
 }
 
 async function empLogin(){try{if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+selectedEmployeeId,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;showEmployeeWelcome()}catch(e){toast(e.message)}}
-let etab='home';async function employee(){try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
+let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 ${installHintHtml()}
+${homeNewsHtml(state.news)}
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
 ${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):`<p>${esc(T('home.no_personal_tasks','Активных индивидуальных заданий сейчас нет.'))}</p>`}
 </div>
@@ -1622,7 +1636,7 @@ async function submitIndividual(id){await api('individual-task/submit',{method:'
 function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div><span class=pill>${esc(n.category)}</span>${n.pinned?' 📌':''}</div><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}function savePhoto(){file64($('#pfile'),async p=>{if(!p)return;await api('me/photo',{method:'POST',body:JSON.stringify({photo:p})});toast('Фото сохранено');employee()})}
 
 let umtab='home';
-async function unifiedManager(){
+async function unifiedManager(){document.body.classList.add('authenticated');
   try{
     const personal=state&&state.employee?state:await api('me');
     const admin=await api('admin/state');
@@ -1684,6 +1698,7 @@ function renderUnifiedManager(){
   let content={
     home:`<div class="card hero"><div class=row><img class=avatar src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class=score>${e.points}</div><small>баллов</small></div></div><p>Личный кабинет и управление командой объединены.</p></div>
       ${installHintHtml()}
+      ${homeNewsHtml(p.news)}
       <div class="card home-tasks"><h3>Мои индивидуальные задания</h3>${(p.individualTasks||[]).filter(x=>x.status!=='completed').map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=home-task><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')||'<p class=muted>Активных заданий нет.</p>'}</div>`,
     newsEmployee:`<h2>Новости</h2>${(p.news||[]).map(newsCard).join('')||'<div class=card>Новостей пока нет.</div>'}`,
     tasksEmployee:`<h2>Задания</h2><div class=card><h3>Мои индивидуальные задания</h3>${(p.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')||'Индивидуальных заданий пока нет.'}</div><h2>Общие задания</h2>${(p.tasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')}`,
@@ -1723,7 +1738,7 @@ async function saveUnifiedSettings(){
   toast('Настройки сохранены');await unifiedManager()
 }
 
-let mtab='employees';async function manager(){try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:`<div data-ui-block="admin.employees">${empAdmin()}</div>`,tasks:`<div data-ui-block="admin.tasks">${crudList('Задания',state.tasks,'task')}</div>`,prizes:`<div data-ui-block="admin.prizes">${crudList('Призы',state.prizes,'prize')}</div>`,achievements:`<div data-ui-block="admin.achievements">${achAdmin()}</div>`,news:`<div data-ui-block="admin.news">${newsAdmin()}</div>`,competition:`<div data-ui-block="admin.competition">${competitionAdmin()}</div>`,individual:`<div data-ui-block="admin.individual">${individualAdmin()}</div>`,messengerAdmin:`<div data-ui-block="admin.messenger">${messengerAdmin()}</div>`,interface:interfaceAdmin(),history:`<div data-ui-block="admin.history"><div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div></div>`,settings:`<div class=card data-ui-block="admin.settings"><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['messengerAdmin',T('admin.tab.messenger','Мессенджер')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager');applyBlockVisibility(document);applyRemovedElements(document);if(mtab==='interface')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);if(mtab==='messengerAdmin')setTimeout(()=>loadMessengerAdmin(),30)}
+let mtab='employees';async function manager(){document.body.classList.add('authenticated');try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:`<div data-ui-block="admin.employees">${empAdmin()}</div>`,tasks:`<div data-ui-block="admin.tasks">${crudList('Задания',state.tasks,'task')}</div>`,prizes:`<div data-ui-block="admin.prizes">${crudList('Призы',state.prizes,'prize')}</div>`,achievements:`<div data-ui-block="admin.achievements">${achAdmin()}</div>`,news:`<div data-ui-block="admin.news">${newsAdmin()}</div>`,competition:`<div data-ui-block="admin.competition">${competitionAdmin()}</div>`,individual:`<div data-ui-block="admin.individual">${individualAdmin()}</div>`,messengerAdmin:`<div data-ui-block="admin.messenger">${messengerAdmin()}</div>`,interface:interfaceAdmin(),history:`<div data-ui-block="admin.history"><div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div></div>`,settings:`<div class=card data-ui-block="admin.settings"><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['messengerAdmin',T('admin.tab.messenger','Мессенджер')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager');applyBlockVisibility(document);applyRemovedElements(document);if(mtab==='interface')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);if(mtab==='messengerAdmin')setTimeout(()=>loadMessengerAdmin(),30)}
 function empAdmin(){return `<div class=card>
 <h2 style="margin-bottom:6px">Сотрудники и управляющий персонал</h2>
 <p class=muted style="margin-top:0">Создание, редактирование карточек, доступы, роли, PIN-коды и участие в рейтинге.</p>
@@ -2116,7 +2131,7 @@ function newsAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Но�
 function addNews(){file64($('#nimg'),async p=>{let r=await api('admin/news',{method:'POST',body:JSON.stringify({title:$('#nt').value,category:$('#nc').value,body:$('#nb').value,event_date:$('#nd').value||null,image:p,pinned:$('#np').checked,requires_ack:$('#na').checked,active:true})});toast(r.push&&r.push.sent>0?`Новость опубликована · уведомлений: ${r.push.sent}`:'Новость опубликована');manager()})}
 async function del(kind,id){if(!confirm('Удалить?'))return;await api('admin/'+kind,{method:'DELETE',body:JSON.stringify({id})});manager()}async function saveSettings(){await api('admin/settings',{method:'POST',body:JSON.stringify({season:$('#season').value,level_step:+$('#levelstep').value,manager_pin:$('#newmpin').value||null})});toast('Настройки сохранены');manager()}
 
-async function supervisor(){try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
+async function supervisor(){document.body.classList.add('authenticated');try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
 function renderSupervisor(){let team=state.employees.filter(e=>e.team_member),others=state.employees.filter(e=>!e.team_member);$('#app').innerHTML=`<div class="card hero"><h2>Панель руководителя</h2><p>Просмотр прогресса команды без доступа к начислению баллов и изменению настроек.</p></div><div class=grid><div class=card><h3>Команда</h3>${team.map((e,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${e.photo||'/assets/logo.png'}"><span>${esc(e.name)}<br><small>${esc(e.position)}</small></span><b style="margin-left:auto">${e.points}</b></div>`).join('')}</div><div class=card><h3>Текущие задания</h3>${state.pending.map(t=>`<div class=listitem><b>${esc(t.employee_name)}</b> — ${esc(t.title)}<br><small>${t.status==='submitted'?'На проверке':'Назначено'}${t.due_date?' · до '+new Date(t.due_date).toLocaleDateString('ru'):''}</small></div>`).join('')||'Нет активных заданий'}</div></div><div class=grid><div class=card><h3>Последние достижения</h3>${state.achievements.slice(0,30).map(a=>{let e=state.employees.find(x=>x.id===a.employee_id);return `<div class=listitem>${esc(a.icon)} <b>${esc(e?.name||'')}</b> — ${esc(a.title)}</div>`}).join('')||'Пока нет достижений'}</div><div class=card><h3>Конкурс</h3>${state.competition?state.competition.board.map((x,i)=>`<div class=listitem>${i+1}. <b>${esc(x.name)}</b> — ${x.score}</div>`).join(''):'Нет активного конкурса'}${others.length?`<hr><small>Не участвуют в рейтинге: ${others.map(x=>esc(x.name)).join(', ')}</small>`:''}</div></div>`;animateSection()}
 
 (async()=>{await loadUiText();applyChromeText();startReplacementObserver();const q=new URLSearchParams(location.search),open=q.get('open');if(['tasks','news','competition','messenger'].includes(open))etab=open;if(token&&role==='manager'){logout();return}if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else login()})();
