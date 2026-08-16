@@ -883,10 +883,11 @@ async function refreshPushStatus(){
     if(browser.permission==='denied'){el.textContent='Уведомления запрещены в настройках устройства/браузера.';return}
     const server=await api('push/status');
     if(!server.configured){el.textContent='Сервер push не настроен.';return}
-    if(browser.subscribed&&server.subscriptions>0){
-      el.innerHTML='✓ Устройство подписано на уведомления. <button class="btn light" style="margin-left:8px;padding:7px 9px" onclick="testPush()">Тест</button>';
+    if(browser.subscribed&&server.subscriptions>0&&browser.permission==='granted'){
+      const card=$('#pushHomeCard');if(card)card.remove();
+      return;
     }else{
-      el.textContent='Устройство ещё не подписано. Нажмите «'+T('home.notifications_enable','Включить уведомления')+'».';
+      el.textContent='Уведомления ещё не включены на этом устройстве.';
     }
   }catch(e){el.textContent='Не удалось проверить push: '+e.message}
 }
@@ -936,8 +937,8 @@ async function enablePush(){
       });
     }
     await api('push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON()})});
-    toast('Устройство подписано на уведомления');
-    await refreshPushStatus();
+    toast('Уведомления включены');
+    const card=$('#pushHomeCard');if(card)card.remove();
   }catch(e){toast('Не удалось включить уведомления: '+e.message)}
 }
 
@@ -946,51 +947,22 @@ async function showEmployeeWelcome(){
  try{
    const me=await api('me'); employeeName=me.employee?.name||employeeName;
  }catch{}
- const first=!localStorage.getItem('welcomeSeen');
- const needsPush=localStorage.getItem('pushOnboardingDone')!=='1';
  const layer=document.createElement('div');layer.className='welcome-stage';layer.id='welcomeStage';
  layer.innerHTML=`<div class=welcome-card>
    <img class=welcome-logo src="/assets/logo.png">
    <div class=auth-kicker>КОМАНДА · ПОЕХАЛИ!</div>
    <h1 class=welcome-title>Добро пожаловать<br>в команду!</h1>
-   <p class=welcome-copy>${first?`Рады видеть тебя, ${esc(employeeName)}. Здесь задания, новости, конкурсы, достижения и общение команды.`:'С возвращением. Проверим уведомления и откроем личный кабинет.'}</p>
-   <div class=welcome-actions>
-     <button class="btn red" onclick="welcomeEnableNotifications()">${needsPush?'🔔 Включить уведомления и продолжить':'Продолжить в кабинет'}</button>
-   </div>
-   <div class=welcome-status id=welcomeStatus>${needsPush?'Для работы платформы необходимо разрешить уведомления на этом устройстве.':'Уведомления уже были настроены на этом устройстве.'}</div>
+   <p class=welcome-copy>${esc(employeeName)}, хорошей смены и отличных результатов 🚀</p>
  </div>`;
- document.body.appendChild(layer);fireworks('login',55)
-}
-async function welcomeEnableNotifications(){
- const st=$('#welcomeStatus');
- try{
-   if(localStorage.getItem('pushOnboardingDone')!=='1'){
-     if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){
-       if(st)st.textContent='Этот браузер не поддерживает push. Откройте сайт в совместимом браузере или добавьте его на главный экран.';
-       return;
-     }
-     const permission=await Notification.requestPermission();
-     if(permission!=='granted'){
-       if(st)st.textContent='Уведомления не разрешены. Разрешите их в настройках устройства, затем нажмите кнопку снова.';
-       return;
-     }
-     const key=await api('push/key');
-     if(!key.publicKey){if(st)st.textContent='Push-сервис временно не настроен на сервере.';return}
-     await navigator.serviceWorker.register('/sw.js');
-     const reg=await navigator.serviceWorker.ready;
-     let sub=await reg.pushManager.getSubscription();
-     if(sub){
-       const current=uint8ToB64Url(sub.options?.applicationServerKey);
-       if(current&&current!==key.publicKey){try{await sub.unsubscribe()}catch{};sub=null}
-     }
-     if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint8Array(key.publicKey)});
-     await api('push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON()})});
-     localStorage.setItem('pushOnboardingDone','1');
-   }
-   localStorage.setItem('welcomeSeen','1');
-   const layer=$('#welcomeStage');if(layer){layer.classList.add('welcome-out');setTimeout(()=>layer.remove(),520)}
-   setTimeout(()=>{if(role==='supervisor')supervisor();else employee()},420);
- }catch(e){if(st)st.textContent='Не удалось включить уведомления: '+e.message}
+ document.body.appendChild(layer);
+ fireworks('login',55);
+ setTimeout(()=>{
+   layer.classList.add('welcome-out');
+   setTimeout(()=>{
+     layer.remove();
+     if(role==='supervisor')supervisor();else employee();
+   },520);
+ },1700);
 }
 
 async function empLogin(){try{if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+selectedEmployeeId,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;showEmployeeWelcome()}catch(e){toast(e.message)}}async function mgrLogin(){try{let j=await api('login/manager',{method:'POST',body:JSON.stringify({pin:$('#mpin').value})});token=j.token;role='manager';localStorage.token=token;localStorage.role=role;manager()}catch(e){toast(e.message)}}
@@ -998,7 +970,7 @@ let etab='home';async function employee(){try{const prev=Number(localStorage.get
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
 ${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):`<p>${esc(T('home.no_personal_tasks','Активных индивидуальных заданий сейчас нет.'))}</p>`}
 </div>
-<div id="pushHomeCard" class="card notify-card" data-ui-block="home.notifications"><h3>🔔 ${esc(T('home.notifications_title','Уведомления о новых заданиях'))}</h3><p class="muted">${esc(T('home.notifications_text','Разрешите уведомления — и новое индивидуальное задание появится на устройстве даже когда сайт закрыт.'))}</p><div class="row"><button class="btn" onclick="enablePush()">${esc(T('home.notifications_enable','Включить уведомления'))}</button><button class="btn light" onclick="testPush()">${esc(T('home.notifications_test','Проверить доставку'))}</button><button class="btn light" onclick="resetPush()">${esc(T('home.notifications_resubscribe','Переподписать устройство'))}</button></div><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
+<div id="pushHomeCard" class="card notify-card" data-ui-block="home.notifications"><h3>🔔 Разрешить уведомления</h3><p class="muted">Включите уведомления, чтобы получать новости, новые задания, конкурсы и сообщения из внутреннего мессенджера.</p><div class="row"><button class="btn" onclick="enablePush()">Включить уведомления</button><button class="btn light" onclick="testPush()">Проверить доставку</button></div><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
 <div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,news:`<div data-ui-block="section.news"><h2>${esc(T('section.news_title','Новости'))}</h2>${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks"><h2>${esc(T('section.tasks_title','Задания'))}</h2><div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes"><h2>${esc(T('section.prizes_title','Призы'))}</h2>${state.prizes.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div>`).join('')}</div>`,messenger:`<div data-ui-block="section.messenger"><div id="messengerRoot"></div></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*"><button class="btn red" onclick="savePhoto()">${esc(T('profile.save_photo','Сохранить фото'))}</button><h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(e.messenger_access?[['messenger',T('tab.messenger','Чаты')]]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='messenger')setTimeout(()=>loadMessenger(),30);else stopMessengerPolling()}
 
 function stopMessengerPolling(){if(messengerTimer){clearInterval(messengerTimer);messengerTimer=null}}
