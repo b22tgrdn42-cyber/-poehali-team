@@ -1748,7 +1748,36 @@ textarea.field{
   font-size:11px;
   color:var(--muted);
 }
-</style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
+
+/* V8.20.1 — clickable home logo */
+.logo-home-btn{
+  appearance:none;
+  -webkit-appearance:none;
+  border:0;
+  padding:0;
+  margin:0;
+  background:transparent;
+  border-radius:50%;
+  cursor:pointer;
+  flex:0 0 auto;
+  line-height:0;
+  transition:transform .22s var(--ease-spring),filter .22s ease;
+}
+.logo-home-btn:hover{
+  transform:translateY(-1px) scale(1.045);
+  filter:drop-shadow(0 7px 12px rgba(143,16,21,.18));
+}
+.logo-home-btn:active{
+  transform:scale(.94);
+}
+.logo-home-btn:focus-visible{
+  outline:3px solid rgba(183,22,27,.28);
+  outline-offset:4px;
+}
+.logo-home-btn .logo{
+  display:block;
+}
+</style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><button class="logo-home-btn" type="button" onclick="goHomeFromLogo()" aria-label="На главную" title="На главную"><img class="logo" src="/assets/logo.png" alt="Команда · Поехали!"></button><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
   <div class="mobile-drawer-backdrop" onclick="closeMobileMenu()"></div>
   <aside class="mobile-drawer-panel">
     <div class="mobile-drawer-head">
@@ -1869,6 +1898,27 @@ window.addEventListener('appinstalled',()=>{
   if(card)card.remove();
 });
 
+
+
+function goHomeFromLogo(){
+  closeMobileMenu?.();
+  closeManageMenu?.();
+
+  const isManager=(state?.personal?.employee?.position==='Управляющий'||state?.employee?.position==='Управляющий');
+  if(isManager && typeof umtab!=='undefined'){
+    if(umtab==='home')return;
+    transitionToSection(()=>{umtab='home';renderUnifiedManager()});
+    return;
+  }
+
+  if(state?.employee && typeof etab!=='undefined'){
+    if(etab==='home')return;
+    transitionToSection(()=>{etab='home';renderEmp()});
+    return;
+  }
+
+  // Before PIN authorization the logo remains visually unchanged and does not bypass login.
+}
 
 function openMobileMenu(){
   renderMobileMenu();
