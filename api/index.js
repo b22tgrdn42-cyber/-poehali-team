@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.1.0';
+const APP_VERSION = '9.1.1';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -837,6 +837,21 @@ module.exports=async(req,res)=>{
   if(req.method==='DELETE'&&path==='admin/content'){
     if(b.key)await sql`DELETE FROM ui_texts WHERE key=${b.key}`;
     return ok(res,{ok:true})
+  }
+
+
+  if(req.method==='DELETE'&&path==='admin/push/subscriptions'){
+    const before=(await sql`SELECT count(*)::int count FROM push_subscriptions`)[0]?.count||0;
+    await sql`DELETE FROM push_subscriptions`;
+    await logAction(u.id,'push.reset_all','push_subscriptions',null,{deleted:before});
+    try{
+      await setSystemStatus('last_push_reset',{
+        deleted:before,
+        by:u.id,
+        at:new Date().toISOString()
+      });
+    }catch{}
+    return ok(res,{ok:true,deleted:before})
   }
 
   if(req.method==='GET'&&path==='admin/diagnostics'){

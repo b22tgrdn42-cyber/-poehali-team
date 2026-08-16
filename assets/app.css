@@ -1894,3 +1894,6 @@ textarea.field{
     grid-template-columns:1fr 1fr;
   }
 }
+
+.danger-zone{border:1px solid rgba(183,22,27,.22);background:linear-gradient(180deg,rgba(183,22,27,.04),transparent)}
+.danger-zone .btn.red{margin-top:8px}

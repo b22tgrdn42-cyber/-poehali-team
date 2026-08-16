@@ -1,4 +1,4 @@
-const SW_VERSION='9.1.0';
+const SW_VERSION='9.1.1';
 const CACHE_NAME='poehali-'+SW_VERSION;
 self.addEventListener('install',event=>{self.skipWaiting()});
 self.addEventListener('activate',event=>{event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k.startsWith('poehali-')&&k!==CACHE_NAME).map(k=>caches.delete(k)));await self.clients.claim()})())});

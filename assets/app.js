@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.1.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.1.1';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -424,6 +424,19 @@ async function submitQuickCompetitionTask(){
   await api(path,{method:'POST',body:JSON.stringify(body)});
   toast('Задание конкурса добавлено');closeQuickCreate();await refreshAfterQuickCreate('competition')
 }
+
+async function resetAllPushSubscriptions(){
+  if(!confirm('Удалить ВСЕ push-подписки сотрудников? После этого устройства потребуется зарегистрировать заново.'))return;
+  if(!confirm('Подтвердите ещё раз: все текущие push-подписки будут удалены.'))return;
+  try{
+    const r=await api('admin/push/subscriptions',{method:'DELETE'});
+    toast(`Push-подписки сброшены: ${r.deleted||0}`);
+    setTimeout(()=>manager(),250);
+  }catch(e){
+    toast(e.message||'Не удалось сбросить push-подписки');
+  }
+}
+
 async function refreshAfterQuickCreate(kind){
   if(currentEmployee()?.position==='Управляющий'){
     const personal=await api('me'),admin=await api('admin/state');
