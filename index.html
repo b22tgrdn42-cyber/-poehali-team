@@ -1701,6 +1701,36 @@ textarea.field{
   .team-profile{padding:14px}
   .team-profile-photo{width:100%;height:auto;aspect-ratio:1;border-radius:20px}
 }
+
+/* V8.19.2 — category badge aligned with news title */
+.news-title-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:8px 0 12px;
+}
+.news-title-row h3{
+  margin:0!important;
+  flex:1 1 220px;
+}
+.news-title-row .pill{
+  flex:0 0 auto;
+  margin:0!important;
+}
+.news-pin{
+  flex:0 0 auto;
+  line-height:1;
+}
+@media(max-width:760px){
+  .news-title-row{
+    gap:10px;
+    margin:10px 0 14px;
+  }
+  .news-title-row h3{
+    flex:1 1 150px;
+  }
+}
 </style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
   <div class="mobile-drawer-backdrop" onclick="closeMobileMenu()"></div>
   <aside class="mobile-drawer-panel">
@@ -2368,7 +2398,7 @@ async function editMsg(id,old){const text=prompt('Изменить сообще�
 async function deleteMsg(id){if(!confirm('Удалить сообщение?'))return;await api('messenger/messages',{method:'DELETE',body:JSON.stringify({id})});await refreshMessages(false)}
 
 async function submitIndividual(id){await api('individual-task/submit',{method:'POST',body:JSON.stringify({id,comment:$('#ic'+id)?.value||''})});toast('Задание отправлено на проверку');employee()}
-function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div><span class=pill>${esc(n.category)}</span>${n.pinned?' 📌':''}</div><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}
+function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div class=news-title-row><span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3>${n.pinned?'<span class=news-pin>📌</span>':''}</div><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}
 let cropState={src:null,img:null,scale:1,x:0,y:0,startX:0,startY:0,drag:false,baseW:0,baseH:0,fileInput:null};
 
 function startProfileCrop(input){
@@ -3014,7 +3044,7 @@ async function saveCompetition(){let r=await api('admin/competition/settings',{m
 async function addCompetitionTask(){await api('admin/competition/tasks',{method:'POST',body:JSON.stringify({title:$('#cot').value,description:$('#cod').value,points:+$('#cop').value})});manager()}
 async function delCompetitionTask(id){if(!confirm('Удалить задание?'))return;await api('admin/competition/tasks',{method:'DELETE',body:JSON.stringify({id})});manager()}
 async function awardCompetition(){let s=$('#cotask'),o=s.options[s.selectedIndex],pts=+$('#copts').value||+(o?.dataset?.p||0),reason=$('#coreason').value||(o&&o.value?o.textContent:'Бонус конкурса');if(!pts)return toast('Укажите баллы');await api('admin/competition/award',{method:'POST',body:JSON.stringify({employee_id:+$('#coe').value,task_id:+s.value||null,points:pts,reason})});pointCelebration(pts);toast('Баллы начислены');manager()}
-function newsAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Новая публикация</h2><p class="muted" style="margin-top:0">Новости, объявления и важная информация для команды.</p><input id=nt class=field placeholder="Заголовок"><select id=nc class=field><option>Важно</option><option>Мероприятие</option><option>Новинка</option><option>Обучение</option><option>Для команды</option></select><textarea id=nb class=field placeholder="Текст новости"></textarea><label>Дата мероприятия (необязательно)</label><input id=nd class=field type=date><label>Фото (необязательно)</label><input id=nimg class=field type=file accept="image/*"><div class=file-note>Можно оставить пустым.</div><div class=row><label><input id=np type=checkbox> Закрепить</label><label><input id=na type=checkbox> Требовать «Ознакомился»</label></div><br><button class="btn red" onclick="addNews()">Опубликовать</button></div>${state.news.map(n=>`<div class=card>${n.image?`<img class=newsimg src="${n.image}">`:''}<span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p><small>Ознакомились: ${n.read_count}</small><br><button class="btn danger" onclick="del('news',${n.id})">Удалить</button></div>`).join('')}`}
+function newsAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Новая публикация</h2><p class="muted" style="margin-top:0">Новости, объявления и важная информация для команды.</p><input id=nt class=field placeholder="Заголовок"><select id=nc class=field><option>Важно</option><option>Мероприятие</option><option>Новинка</option><option>Обучение</option><option>Для команды</option></select><textarea id=nb class=field placeholder="Текст новости"></textarea><label>Дата мероприятия (необязательно)</label><input id=nd class=field type=date><label>Фото (необязательно)</label><input id=nimg class=field type=file accept="image/*"><div class=file-note>Можно оставить пустым.</div><div class=row><label><input id=np type=checkbox> Закрепить</label><label><input id=na type=checkbox> Требовать «Ознакомился»</label></div><br><button class="btn red" onclick="addNews()">Опубликовать</button></div>${state.news.map(n=>`<div class=card>${n.image?`<img class=newsimg src="${n.image}">`:''}<div class=news-title-row><span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3></div><p>${esc(n.body)}</p><small>Ознакомились: ${n.read_count}</small><br><button class="btn danger" onclick="del('news',${n.id})">Удалить</button></div>`).join('')}`}
 function addNews(){file64($('#nimg'),async p=>{let r=await api('admin/news',{method:'POST',body:JSON.stringify({title:$('#nt').value,category:$('#nc').value,body:$('#nb').value,event_date:$('#nd').value||null,image:p,pinned:$('#np').checked,requires_ack:$('#na').checked,active:true})});toast(r.push&&r.push.sent>0?`Новость опубликована · уведомлений: ${r.push.sent}`:'Новость опубликована');manager()})}
 async function del(kind,id){if(!confirm('Удалить?'))return;await api('admin/'+kind,{method:'DELETE',body:JSON.stringify({id})});manager()}async function saveSettings(){await api('admin/settings',{method:'POST',body:JSON.stringify({season:$('#season').value,level_step:+$('#levelstep').value,manager_pin:$('#newmpin').value||null})});toast('Настройки сохранены');manager()}
 
