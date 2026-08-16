@@ -374,8 +374,167 @@ textarea.field{min-height:110px;resize:vertical}
     scroll-behavior:auto!important
   }
 }
+
+/* Modern authentication screen */
+.auth-shell{
+  max-width:980px;
+  margin:3vh auto 0;
+  display:grid;
+  grid-template-columns:minmax(0,.9fr) minmax(380px,1.1fr);
+  gap:18px;
+  align-items:stretch;
+}
+.auth-brand{
+  min-height:580px;
+  padding:34px;
+  border-radius:30px;
+  color:#fff;
+  background:
+    radial-gradient(circle at 75% 14%,rgba(255,255,255,.2),transparent 25%),
+    radial-gradient(circle at 10% 90%,rgba(232,179,91,.25),transparent 28%),
+    linear-gradient(145deg,#171717 0%,#2b2118 60%,#5c2c20 100%);
+  box-shadow:0 28px 80px rgba(48,28,4,.18);
+  position:relative;
+  overflow:hidden;
+}
+.auth-brand:after{
+  content:"";
+  position:absolute;
+  width:330px;height:330px;
+  border:44px solid rgba(183,22,27,.88);
+  border-radius:50%;
+  right:-150px;bottom:-150px;
+  box-shadow:0 0 0 18px rgba(255,255,255,.08),0 0 0 42px rgba(232,179,91,.12);
+}
+.auth-logo{
+  width:210px;
+  max-width:72%;
+  filter:drop-shadow(0 18px 36px rgba(0,0,0,.22));
+}
+.auth-kicker{
+  margin-top:36px;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:#f1c97f;
+}
+.auth-title{
+  max-width:480px;
+  margin:10px 0 12px;
+  font-size:clamp(38px,5vw,64px);
+  line-height:.96;
+  letter-spacing:-.05em;
+}
+.auth-copy{
+  max-width:430px;
+  font-size:16px;
+  line-height:1.55;
+  color:#eee4d5;
+}
+.auth-points{
+  display:flex;gap:10px;flex-wrap:wrap;
+  margin-top:26px;
+}
+.auth-points span{
+  padding:8px 11px;
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  font-size:12px;font-weight:800;
+}
+.auth-panel{
+  padding:28px;
+  border-radius:30px;
+  background:rgba(255,253,248,.88);
+  border:1px solid rgba(231,208,169,.9);
+  box-shadow:0 28px 80px rgba(69,40,8,.12);
+  backdrop-filter:blur(20px) saturate(140%);
+}
+.auth-panel h2{font-size:30px;letter-spacing:-.03em;margin:4px 0 6px}
+.auth-panel .lead{margin:0 0 20px;color:var(--muted)}
+.auth-switch{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  padding:5px;
+  border-radius:15px;
+  background:#f3e6cf;
+  margin-bottom:18px;
+}
+.auth-switch button{
+  padding:10px;
+  border-radius:11px;
+  background:transparent;
+  color:#6a5847;
+  font-weight:900;
+  cursor:pointer;
+  transition:.2s ease;
+}
+.auth-switch button.active{
+  background:#fff;
+  color:var(--ink);
+  box-shadow:0 8px 18px rgba(69,40,8,.08);
+}
+.employee-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  max-height:270px;
+  overflow:auto;
+  padding:2px;
+  margin-bottom:14px;
+}
+.employee-choice{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  min-height:66px;
+  text-align:left;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid #e4d0ac;
+  background:#fffaf0;
+  color:var(--ink);
+  cursor:pointer;
+  transition:.18s ease;
+}
+.employee-choice:hover{transform:translateY(-1px);border-color:#cf9e50;box-shadow:0 8px 20px rgba(69,40,8,.07)}
+.employee-choice.selected{border-color:var(--red);box-shadow:0 0 0 3px rgba(183,22,27,.1)}
+.employee-choice img{width:44px;height:44px;border-radius:14px;object-fit:cover;background:#f5dfb7}
+.employee-choice b{display:block;font-size:14px}
+.employee-choice small{display:block;color:var(--muted);margin-top:2px;font-size:11px}
+.pin-wrap{position:relative}
+.pin-wrap .field{padding-right:52px;font-size:20px;letter-spacing:.22em;font-weight:900}
+.pin-eye{
+  position:absolute;right:8px;top:11px;
+  width:38px;height:38px;border-radius:10px;
+  background:#f2e4ca;color:#5b4634;cursor:pointer;font-size:17px;
+}
+.auth-submit{width:100%;padding:14px 16px;font-size:15px}
+.auth-note{margin-top:12px;text-align:center;color:var(--muted);font-size:12px}
+.manager-form{display:none}
+.manager-form.active{display:block}
+.employee-form.hidden-auth{display:none}
+@media(max-width:850px){
+  .auth-shell{grid-template-columns:1fr;max-width:620px;margin-top:1vh}
+  .auth-brand{min-height:300px;padding:24px}
+  .auth-title{font-size:44px}
+  .auth-brand:after{width:220px;height:220px;right:-120px;bottom:-120px}
+}
+@media(max-width:520px){
+  .auth-shell{gap:10px}
+  .auth-brand{min-height:240px;border-radius:22px}
+  .auth-logo{width:140px}
+  .auth-kicker{margin-top:18px}
+  .auth-title{font-size:36px}
+  .auth-copy{font-size:14px}
+  .auth-panel{padding:18px;border-radius:22px}
+  .employee-grid{grid-template-columns:1fr;max-height:235px}
+}
 </style></head><body><header class="top"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
-const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null;
+const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null;
 function animateSection(){
  const a=document.querySelector('#app');if(!a)return;
  a.classList.remove('view-transition','page-enter');void a.offsetWidth;a.classList.add('page-enter');
@@ -419,8 +578,56 @@ function pointCelebration(delta){
 const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 async function api(path,opt={}){opt.headers={...(opt.headers||{}),'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})};let r=await fetch(A+path,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Ошибка');return j}function toast(t){let d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2200)}function logout(){localStorage.clear();token='';role='';login()}
 function file64(inp,cb){let f=inp.files[0];if(!f)return cb(null);if(f.size>900000)return toast('Фото должно быть меньше 900 КБ');let r=new FileReader;r.onload=()=>cb(r.result);r.readAsDataURL(f)}
-async function login(){role='';$('#who').innerHTML='';let em=await api('public/employees');$('#app').innerHTML=`<div class="login card"><img class="loginlogo" src="/assets/logo.png"><h2>Вход в систему</h2><label>Сотрудник</label><select id="emp" class="field"><option value="">Выберите себя</option>${em.map(e=>`<option value="${e.id}">${esc(e.name)} — ${esc(e.position)}</option>`).join('')}</select><input id="pin" class="field" type="password" inputmode="numeric" placeholder="Индивидуальный PIN"><button class="btn red" onclick="empLogin()">Войти сотрудником</button><hr><h3>Управляющий</h3><input id="mpin" class="field" type="password" inputmode="numeric" placeholder="PIN управляющего"><button class="btn" onclick="mgrLogin()">Кабинет управляющего</button></div>`}
-
+async function login(){
+ role='';selectedEmployeeId=null;$('#who').innerHTML='';
+ let em=await api('public/employees');
+ $('#app').innerHTML=`<div class="auth-shell">
+   <section class="auth-brand">
+     <img class="auth-logo" src="/assets/logo.png">
+     <div class="auth-kicker">Внутренняя платформа команды</div>
+     <h1 class="auth-title">Команда.<br>Поехали!</h1>
+     <p class="auth-copy">Новости, конкурсы, индивидуальные задания, достижения и рейтинг команды — в одном месте.</p>
+     <div class="auth-points"><span>🚀 Задания</span><span>🏆 Рейтинг</span><span>🎁 Призы</span><span>📰 Новости</span></div>
+   </section>
+   <section class="auth-panel">
+     <h2>Добро пожаловать</h2>
+     <p class="lead">Выберите профиль и введите персональный PIN-код.</p>
+     <div class="auth-switch">
+       <button id="swEmp" class="active" onclick="authMode('employee')">Сотрудник</button>
+       <button id="swMgr" onclick="authMode('manager')">Управляющий</button>
+     </div>
+     <div id="employeeForm" class="employee-form">
+       <div class="employee-grid">${em.map(e=>`<button class="employee-choice" data-id="${e.id}" onclick="selectEmployee(${e.id},this)"><img src="${e.photo||'/assets/logo.png'}"><span><b>${esc(e.name)}</b><small>${esc(e.position)}</small></span></button>`).join('')}</div>
+       <div class="pin-wrap"><input id="pin" class="field" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="PIN-код"><button class="pin-eye" onclick="togglePin('pin',this)" type="button">◉</button></div>
+       <button class="btn red auth-submit" onclick="empLogin()">Войти в личный кабинет</button>
+       <div class="auth-note">PIN выдаёт управляющий. Не передавайте его другим сотрудникам.</div>
+     </div>
+     <div id="managerForm" class="manager-form">
+       <div class="pin-wrap"><input id="mpin" class="field" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="PIN управляющего"><button class="pin-eye" onclick="togglePin('mpin',this)" type="button">◉</button></div>
+       <button class="btn auth-submit" onclick="mgrLogin()">Открыть кабинет управляющего</button>
+       <div class="auth-note">Административный доступ к сотрудникам, заданиям и настройкам.</div>
+     </div>
+   </section>
+ </div>`;animateSection()
+}
+function authMode(mode){
+ const emp=mode==='employee';
+ $('#employeeForm').classList.toggle('hidden-auth',!emp);
+ $('#managerForm').classList.toggle('active',!emp);
+ $('#swEmp').classList.toggle('active',emp);
+ $('#swMgr').classList.toggle('active',!emp);
+}
+function selectEmployee(id,el){
+ selectedEmployeeId=id;
+ document.querySelectorAll('.employee-choice').forEach(x=>x.classList.remove('selected'));
+ el.classList.add('selected');
+ setTimeout(()=>$('#pin')?.focus(),100);
+}
+function togglePin(id,btn){
+ const x=$('#'+id);if(!x)return;
+ x.type=x.type==='password'?'text':'password';
+ btn.textContent=x.type==='password'?'◉':'×';
+}
 function b64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
   const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
@@ -437,7 +644,7 @@ async function pushState(){
 async function enablePush(){
   try{
     const key=await api('push/key');
-    if(!key.publicKey)return toast('Уведомления пока не настроены на сервере');
+    if(!key.publicKey)return toast('Push-уведомления не активированы: в Vercel отсутствуют VAPID-ключи');
     const permission=await Notification.requestPermission();
     if(permission!=='granted')return toast('Разрешение на уведомления не предоставлено');
     const reg=await navigator.serviceWorker.register('/sw.js');
@@ -448,7 +655,7 @@ async function enablePush(){
     if(role==='employee')employee();
   }catch(e){toast('Не удалось включить уведомления: '+e.message)}
 }
-async function empLogin(){try{let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+$('#emp').value,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;fireworks('login');if(role==='supervisor')supervisor();else employee()}catch(e){toast(e.message)}}async function mgrLogin(){try{let j=await api('login/manager',{method:'POST',body:JSON.stringify({pin:$('#mpin').value})});token=j.token;role='manager';localStorage.token=token;localStorage.role=role;manager()}catch(e){toast(e.message)}}
+async function empLogin(){try{if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+selectedEmployeeId,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;fireworks('login');if(role==='supervisor')supervisor();else employee()}catch(e){toast(e.message)}}async function mgrLogin(){try{let j=await api('login/manager',{method:'POST',body:JSON.stringify({pin:$('#mpin').value})});token=j.token;role='manager';localStorage.token=token;localStorage.role=role;manager()}catch(e){toast(e.message)}}
 let etab='home';async function employee(){try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 <div class="card home-tasks"><div class="row"><div><h2 style="margin:0">Мои индивидуальные задания</h2><div class="muted">Новые задания появляются здесь сразу после входа</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">Все задания</button></div>
 ${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):'<p>Активных индивидуальных заданий сейчас нет.</p>'}
