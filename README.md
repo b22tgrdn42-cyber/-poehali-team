@@ -528,3 +528,12 @@ V9.3.2 PUSH CONTROLS FOR EVERY EMPLOYEE:
 - «Проверить доставку» сначала проверяет подписку, затем вызывает /api/push/test;
 - push/status теперь отдельно показывает public/private VAPID configuration;
 - push subscribe записывается в audit log.
+
+V9.3.3 APPLE/Safari PUSH VAPID FIX:
+- исправлена причина 403 BadJwtToken на Apple Web Push;
+- удалён невалидный fallback VAPID subject mailto:admin@komanda-poehali.local;
+- fallback теперь https://komanda-poehali.vercel.app;
+- VAPID_SUBJECT из Vercel валидируется: localhost и *.local автоматически заменяются production URL;
+- push runtime logs теперь указывают hostname push-провайдера без раскрытия endpoint;
+- диагностика показывает фактически используемый VAPID subject;
+- VAPID public/private keys не меняются, поэтому существующие подписки не требуется сбрасывать только из-за этой правки.

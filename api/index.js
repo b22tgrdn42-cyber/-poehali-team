@@ -6,10 +6,36 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.3.2';
+const APP_VERSION = '9.3.3';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
+  
+function normalizedVapidSubject(){
+  const fallback='https://komanda-poehali.vercel.app';
+  const raw=String(process.env.VAPID_SUBJECT||'').trim();
+  if(!raw)return fallback;
+
+  try{
+    if(raw.startsWith('https://')){
+      const u=new URL(raw);
+      const host=u.hostname.toLowerCase();
+      if(host==='localhost'||host.endsWith('.local'))return fallback;
+      return raw;
+    }
+    if(raw.startsWith('mailto:')){
+      const email=raw.slice(7).trim();
+      const domain=(email.split('@')[1]||'').toLowerCase();
+      if(!domain||domain==='localhost'||domain.endsWith('.local'))return fallback;
+      return raw;
+    }
+  }catch{}
+  return fallback;
+}
+const VAPID_SUBJECT=normalizedVapidSubject();
+if(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY){
+  webpush.setVapidDetails(VAPID_SUBJECT,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
+}
+
 }
 async function deliverPushRows(rows,payload,context='push'){
   const result={
@@ -41,8 +67,10 @@ async function deliverPushRows(rows,payload,context='push'){
         await sql`DELETE FROM push_subscriptions WHERE endpoint=${s.endpoint}`;
         result.removed++;
       }
-      if(result.errors.length<8)result.errors.push(`${code||''}: ${body}`.slice(0,280));
-      console.error('push error',context,code,body);
+      let pushHost='';
+      try{pushHost=new URL(s.endpoint).hostname}catch{}
+      if(result.errors.length<8)result.errors.push(`${pushHost?pushHost+' · ':''}${code||''}: ${body}`.slice(0,280));
+      console.error('push error',context,pushHost,code,body);
     }
   });
   await Promise.allSettled(jobs);
@@ -913,7 +941,7 @@ module.exports=async(req,res)=>{
     return ok(res,{
       version:APP_VERSION,environment:APP_ENV,
       database:{ok:true,latency_ms:Date.now()-dbStart,server_time:db.server_time},
-      push:{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),public_key:!!VAPID_PUBLIC_KEY,private_key:!!VAPID_PRIVATE_KEY,subscriptions:pushCount[0].count,subject:process.env.VAPID_SUBJECT?'configured':'default'},
+      push:{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),public_key:!!VAPID_PUBLIC_KEY,private_key:!!VAPID_PRIVATE_KEY,subscriptions:pushCount[0].count,subject:VAPID_SUBJECT},
       counts:{employees:empCount[0].count,audit:auditCount[0].count,backups:backupCount[0].count},
       cron:Object.fromEntries(statuses.map(x=>[x.key,{...x.value,updated_at:x.updated_at}])),
       last_push:(statuses.find(x=>x.key==='last_push')||null)

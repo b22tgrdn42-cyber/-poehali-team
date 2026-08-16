@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.3.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.3.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -167,7 +167,11 @@ async function testPushFromProfile(){
       toast(`Тестовый push отправлен: ${result.sent}`);
     }else{
       const msg=result.errors?.[0]||'Сервер не подтвердил доставку';
-      toast('Push не доставлен · '+msg);
+      if(/BadJwtToken/i.test(msg)){
+        toast('Push не доставлен: ошибка VAPID авторизации. Обновите сайт и повторите тест.');
+      }else{
+        toast('Push не доставлен · '+msg);
+      }
     }
     await refreshProfilePushStatus();
   }catch(e){
