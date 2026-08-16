@@ -169,6 +169,10 @@ async function init(){
  await sql`UPDATE employees SET
    can_manage_tasks = CASE WHEN position IN ('Управляющий','Старший официант','Шеф-бармен') THEN true ELSE can_manage_tasks END,
    can_assign_individual = CASE WHEN position IN ('Управляющий','Старший официант','Шеф-бармен') THEN true ELSE can_assign_individual END,
+   can_manage_news = CASE WHEN position='Управляющий' THEN true ELSE can_manage_news END,
+   can_manage_competition = CASE WHEN position='Управляющий' THEN true ELSE can_manage_competition END,
+   can_manage_prizes = CASE WHEN position='Управляющий' THEN true ELSE can_manage_prizes END,
+   can_manage_achievements = CASE WHEN position='Управляющий' THEN true ELSE can_manage_achievements END,
    can_manage_permissions = CASE WHEN position='Управляющий' THEN true ELSE can_manage_permissions END
  `;
 
@@ -219,6 +223,11 @@ async function employeePermissions(employeeId){
   const rows=await sql`SELECT can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${employeeId} AND active=true`;
   return rows[0]||{};
 }
+
+async function isEmployeeManager(employeeId){
+  const r=await sql`SELECT position,active FROM employees WHERE id=${employeeId}`;
+  return !!(r.length&&r[0].active&&r[0].position==='Управляющий');
+}
 function hasAnyStaffPermission(p){
   return !!(p.can_manage_tasks||p.can_assign_individual||p.can_manage_news||p.can_manage_competition||p.can_manage_prizes||p.can_manage_achievements||p.can_manage_permissions);
 }
@@ -227,11 +236,8 @@ module.exports=async(req,res)=>{
   await init(); const path=(req.query.path||'').toString(); const u=auth(req);
   if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true ORDER BY name`)}
   if(req.method==='POST'&&path==='login/employee'){const b=await body(req); const rows=await sql`SELECT * FROM employees WHERE id=${b.id} AND active=true`; if(!rows.length||!(await bcrypt.compare(String(b.pin||''),rows[0].pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:(rows[0].access_role==='supervisor'?'supervisor':'employee'),id:rows[0].id}),access_role:rows[0].access_role||'employee'})}
-  if(req.method==='POST'&&path==='login/manager'){const b=await body(req); const s=(await sql`SELECT manager_pin_hash FROM settings WHERE id=1`)[0]; if(!(await bcrypt.compare(String(b.pin||''),s.manager_pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:'manager'})})}
-  if(req.method==='GET'&&path==='push/key'){return ok(res,{publicKey:VAPID_PUBLIC_KEY})}
-  if(req.method==='GET'&&path==='content'){
-    const rows=await sql`SELECT key,value FROM ui_texts ORDER BY key`;
-    return ok(res,Object.fromEntries(rows.map(x=>[x.key,x.value])))
+  if(req.method==='POST'&&path==='login/manager'){
+    return ok(res,{error:'Отдельный вход управляющего отключён. Войдите как сотрудник.'},410)
   }
   if(req.method==='GET'&&path==='content/replacements'){
     const rows=await sql`SELECT source_text,replacement_text FROM ui_replacements ORDER BY source_text`;
@@ -480,7 +486,7 @@ module.exports=async(req,res)=>{
   if(req.method==='POST'&&path==='me/photo'&&(u.role==='employee'||u.role==='supervisor')){const b=await body(req); if((b.photo||'').length>1400000)return ok(res,{error:'Фото слишком большое'},400); await sql`UPDATE employees SET photo=${b.photo||null} WHERE id=${u.id}`; return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='news/ack'&&u.role==='employee'){const b=await body(req); await sql`INSERT INTO news_reads(news_id,employee_id) VALUES(${b.news_id},${u.id}) ON CONFLICT DO NOTHING`; return ok(res,{ok:true})}
 
-  if(req.method==='GET'&&path==='supervisor/state'&&(u.role==='supervisor'||u.role==='manager')){
+  if(req.method==='GET'&&path==='supervisor/state'&&(u.role==='supervisor'||(u.role==='manager'||employeeManager))){
     const employees=await sql`SELECT id,name,position,points,photo,active,team_member,access_role,messenger_access,last_seen FROM employees WHERE active=true ORDER BY team_member DESC,points DESC,name`;
     const achievements=await sql`SELECT ea.employee_id,a.title,a.icon,a.description,ea.created_at FROM employee_achievements ea JOIN achievements a ON a.id=ea.achievement_id ORDER BY ea.created_at DESC`;
     const pending=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.status IN ('assigned','submitted') ORDER BY it.status DESC,it.due_date NULLS LAST`;
@@ -490,7 +496,7 @@ module.exports=async(req,res)=>{
     return ok(res,{employees,achievements,pending,competition})
   }
 
-  if(u.role!=='manager') return ok(res,{error:'Нет доступа'},403);
+  if(!(u.role==='manager'||employeeManager)) return ok(res,{error:'Нет доступа'},403);
 
   if(req.method==='GET'&&path==='admin/messenger'){
     const users=await sql`SELECT id,name,position,photo,messenger_access,active,last_seen FROM employees ORDER BY name`;
@@ -577,7 +583,8 @@ module.exports=async(req,res)=>{
     if(b.key)await sql`DELETE FROM ui_texts WHERE key=${b.key}`;
     return ok(res,{ok:true})
   }
-  if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
+    const employeeManager=(u.role==='employee'||u.role==='supervisor')&&u.id?await isEmployeeManager(u.id):false;
+if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} ORDER BY id`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; competition={...comp,tasks:ct,board};}
  const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
  return ok(res,{employees,tasks,prizes,achievements,news,history,settings:settings[0],competition,individualTasks})}
