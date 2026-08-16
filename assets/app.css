@@ -2081,3 +2081,35 @@ body.tutorial-open{overflow:hidden!important}
     grid-column:1/-1;
   }
 }
+
+/* V9.2.2 — tutorial must stay above messenger and all app panes */
+#tutorialOverlay.tutorial-overlay{
+  z-index:2147483000!important;
+  isolation:isolate;
+}
+#tutorialOverlay .tutorial-card{
+  position:relative!important;
+  z-index:2147483001!important;
+  opacity:1!important;
+  filter:none!important;
+  pointer-events:auto!important;
+}
+body.tutorial-open #app{
+  pointer-events:none;
+}
+body.tutorial-open #tutorialOverlay,
+body.tutorial-open #tutorialOverlay *{
+  pointer-events:auto;
+}
+/* Never let messenger panes or highlighted content cover the tutorial card. */
+body.tutorial-open .messenger-shell,
+body.tutorial-open .chat-shell,
+body.tutorial-open .chat-layout,
+body.tutorial-open .tutorial-highlight{
+  z-index:auto!important;
+}
+body.tutorial-open .tutorial-highlight{
+  box-shadow:0 0 0 4px rgba(232,179,91,.82)!important;
+  outline:4px solid rgba(232,179,91,.92)!important;
+  outline-offset:5px!important;
+}

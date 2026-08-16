@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.2.1';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.2.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -513,11 +513,22 @@ function spotlightTutorialTarget(step){
 function renderTutorialStep(){
   const overlay=$('#tutorialOverlay'),card=$('#tutorialCard');
   if(!overlay||!card)return;
+  // Messenger and some complex sections create their own stacking contexts.
+  // Keep tutorial as the last direct child of body so it always stays above them.
+  if(overlay.parentElement!==document.body || overlay!==document.body.lastElementChild){
+    document.body.appendChild(overlay);
+  }
   tutorialRuntimeActive=true;
   const currentIndex=tutorialState.index;
   const step=tutorialState.steps[currentIndex];
   if(!step){finishTutorial();return}
   navigateForTutorial(step);
+  requestAnimationFrame(()=>{
+    const activeOverlay=$('#tutorialOverlay');
+    if(activeOverlay && activeOverlay.parentElement===document.body){
+      document.body.appendChild(activeOverlay);
+    }
+  });
 
   // renderUnifiedManager/renderEmp may run while moving between tutorial sections.
   // Restore the same tutorial index after that render cycle.
