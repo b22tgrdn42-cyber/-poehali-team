@@ -1633,19 +1633,14 @@ textarea.field{
   touch-action:none;
   user-select:none;
 }
-.crop-stage img{
+.crop-stage canvas{
   position:absolute;
-  top:50%;
-  left:50%;
-  transform-origin:center center;
-  max-width:none;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:block;
+  background:#f3eadc;
   pointer-events:none;
-  user-select:none;
-  object-fit:unset;
-  filter:none!important;
-  opacity:1!important;
-  mix-blend-mode:normal!important;
-  image-rendering:auto;
 }
 .crop-mask{
   position:absolute;
@@ -1755,7 +1750,7 @@ textarea.field{
       <button class="btn light" onclick="closeCropper()">×</button>
     </div>
     <div id="cropStage" class="crop-stage">
-      <img id="cropImage" alt="">
+      <canvas id="cropCanvas"></canvas>
       <div class="crop-mask"></div>
     </div>
     <div class="crop-controls">
@@ -2404,32 +2399,99 @@ async function deleteMsg(id){if(!confirm('Удалить сообщение?'))r
 
 async function submitIndividual(id){await api('individual-task/submit',{method:'POST',body:JSON.stringify({id,comment:$('#ic'+id)?.value||''})});toast('Задание отправлено на проверку');employee()}
 function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div class=news-title-row><span class=pill>${esc(n.category)}</span><h3>${esc(n.title)}</h3>${n.pinned?'<span class=news-pin>📌</span>':''}</div><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}
-let cropState={src:null,img:null,scale:1,x:0,y:0,startX:0,startY:0,drag:false,baseW:0,baseH:0,fileInput:null};
+let cropState={
+  source:null,
+  sourceW:0,
+  sourceH:0,
+  baseScale:1,
+  scale:1,
+  x:0,
+  y:0,
+  startX:0,
+  startY:0,
+  drag:false,
+  fileInput:null,
+  objectUrl:null
+};
 
-function startProfileCrop(input){
+async function decodeProfileImage(file){
+  if('createImageBitmap' in window){
+    try{
+      const bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});
+      return {source:bitmap,width:bitmap.width,height:bitmap.height,cleanup:()=>bitmap.close?.()};
+    }catch(e){
+      console.warn('createImageBitmap failed, falling back to Image',e);
+    }
+  }
+
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.decoding='async';
+  const loaded=new Promise((resolve,reject)=>{
+    img.onload=()=>resolve();
+    img.onerror=()=>reject(new Error('Браузер не смог открыть этот формат изображения'));
+  });
+  img.src=url;
+  await loaded;
+  return {
+    source:img,
+    width:img.naturalWidth,
+    height:img.naturalHeight,
+    cleanup:()=>URL.revokeObjectURL(url)
+  };
+}
+
+async function startProfileCrop(input){
   const file=input?.files?.[0];
   if(!file)return toast('Выберите фотографию');
-  if(!file.type.startsWith('image/'))return toast('Выберите файл изображения');
+  if(!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name||'')){
+    return toast('Выберите файл изображения');
+  }
   if(file.size>12*1024*1024)return toast('Максимальный размер исходного фото — 12 МБ');
-  const reader=new FileReader();
-  reader.onload=e=>{
-    cropState={...cropState,src:e.target.result,x:0,y:0,scale:1,fileInput:input};
-    const img=$('#cropImage');
-    img.onload=()=>{
-      cropState.img=img;
-      const stage=$('#cropStage');
-      const sw=stage.clientWidth,sh=stage.clientHeight;
-      const scale=Math.max(sw/img.naturalWidth,sh/img.naturalHeight);
-      cropState.baseScale=scale;
-      cropState.scale=1;
-      $('#cropZoom').value='1';
-      updateCropTransform();
-      $('#cropModal').classList.add('open');
-      document.body.style.overflow='hidden';
+
+  const statusFileName=(file.name||'').toLowerCase();
+  if(/\.(heic|heif)$/.test(statusFileName) || /heic|heif/.test(file.type||'')){
+    // Safari support varies. We try decoding, but show a meaningful error if it cannot.
+    console.info('Attempting HEIC/HEIF decode');
+  }
+
+  try{
+    if(cropState.cleanup)cropState.cleanup();
+    const decoded=await decodeProfileImage(file);
+
+    cropState={
+      ...cropState,
+      source:decoded.source,
+      sourceW:decoded.width,
+      sourceH:decoded.height,
+      cleanup:decoded.cleanup,
+      x:0,y:0,scale:1,
+      fileInput:input
     };
-    img.src=e.target.result;
-  };
-  reader.readAsDataURL(file);
+
+    const modal=$('#cropModal');
+    modal.classList.add('open');
+    document.body.style.overflow='hidden';
+
+    // Wait until the modal has real dimensions.
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+    const stage=$('#cropStage');
+    const sw=stage.clientWidth,sh=stage.clientHeight;
+    if(!sw||!sh)throw new Error('Не удалось определить размер окна обрезки');
+
+    cropState.baseScale=Math.max(sw/cropState.sourceW,sh/cropState.sourceH);
+    $('#cropZoom').value='1';
+    updateCropTransform();
+  }catch(e){
+    console.error('profile image decode error',e);
+    closeCropper();
+    if(/heic|heif/i.test(file.type||'') || /\.(heic|heif)$/i.test(file.name||'')){
+      toast('Этот HEIC/HEIF-файл браузер не смог открыть. Выберите фото в JPG/PNG или сделайте скриншот фотографии.');
+    }else{
+      toast(e.message||'Не удалось открыть фотографию');
+    }
+  }
 }
 
 function closeCropper(){
@@ -2437,25 +2499,55 @@ function closeCropper(){
   document.body.style.overflow='';
 }
 
-function updateCropTransform(){
-  const img=$('#cropImage'),stage=$('#cropStage');
-  if(!img||!stage||!img.naturalWidth)return;
-  cropState.scale=Number($('#cropZoom').value)||1;
+function clampCropPosition(){
+  const stage=$('#cropStage');
+  if(!stage||!cropState.source)return;
   const totalScale=cropState.baseScale*cropState.scale;
-  const w=img.naturalWidth*totalScale,h=img.naturalHeight*totalScale;
+  const w=cropState.sourceW*totalScale;
+  const h=cropState.sourceH*totalScale;
   const maxX=Math.max(0,(w-stage.clientWidth)/2);
   const maxY=Math.max(0,(h-stage.clientHeight)/2);
   cropState.x=Math.max(-maxX,Math.min(maxX,cropState.x));
   cropState.y=Math.max(-maxY,Math.min(maxY,cropState.y));
-  img.style.width=img.naturalWidth*totalScale+'px';
-  img.style.height=img.naturalHeight*totalScale+'px';
-  img.style.transform=`translate(calc(-50% + ${cropState.x}px),calc(-50% + ${cropState.y}px))`;
+}
+
+function renderCropPreview(){
+  const stage=$('#cropStage'),canvas=$('#cropCanvas');
+  if(!stage||!canvas||!cropState.source)return;
+
+  const cssW=stage.clientWidth,cssH=stage.clientHeight;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const pxW=Math.max(1,Math.round(cssW*dpr));
+  const pxH=Math.max(1,Math.round(cssH*dpr));
+  if(canvas.width!==pxW)canvas.width=pxW;
+  if(canvas.height!==pxH)canvas.height=pxH;
+
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#f3eadc';
+  ctx.fillRect(0,0,cssW,cssH);
+
+  const totalScale=cropState.baseScale*cropState.scale;
+  const dw=cropState.sourceW*totalScale;
+  const dh=cropState.sourceH*totalScale;
+  const dx=(cssW-dw)/2+cropState.x;
+  const dy=(cssH-dh)/2+cropState.y;
+
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
+  ctx.drawImage(cropState.source,dx,dy,dw,dh);
+}
+
+function updateCropTransform(){
+  cropState.scale=Number($('#cropZoom')?.value)||1;
+  clampCropPosition();
+  renderCropPreview();
 }
 
 (function initCropDrag(){
   document.addEventListener('pointerdown',e=>{
     const stage=e.target.closest?.('#cropStage');
-    if(!stage)return;
+    if(!stage||!cropState.source)return;
     cropState.drag=true;
     cropState.startX=e.clientX-cropState.x;
     cropState.startY=e.clientY-cropState.y;
@@ -2465,40 +2557,46 @@ function updateCropTransform(){
     if(!cropState.drag)return;
     cropState.x=e.clientX-cropState.startX;
     cropState.y=e.clientY-cropState.startY;
-    updateCropTransform();
+    clampCropPosition();
+    renderCropPreview();
   });
   document.addEventListener('pointerup',()=>cropState.drag=false);
+  window.addEventListener('resize',()=>{
+    if($('#cropModal')?.classList.contains('open')&&cropState.source){
+      const stage=$('#cropStage');
+      cropState.baseScale=Math.max(stage.clientWidth/cropState.sourceW,stage.clientHeight/cropState.sourceH);
+      updateCropTransform();
+    }
+  });
 })();
 
 async function applyCrop(){
-  const img=$('#cropImage'),stage=$('#cropStage');
-  if(!img||!stage||!img.naturalWidth||!img.naturalHeight){
-    return toast('Не удалось прочитать фотографию');
+  if(!cropState.source||!cropState.sourceW||!cropState.sourceH){
+    return toast('Сначала выберите фотографию');
   }
+
+  const stage=$('#cropStage');
+  if(!stage)return;
 
   try{
     const stageW=stage.clientWidth;
     const stageH=stage.clientHeight;
-    const totalScale=(cropState.baseScale||1)*(cropState.scale||1);
+    const totalScale=cropState.baseScale*cropState.scale;
 
-    const displayedW=img.naturalWidth*totalScale;
-    const displayedH=img.naturalHeight*totalScale;
+    const displayedW=cropState.sourceW*totalScale;
+    const displayedH=cropState.sourceH*totalScale;
+    const left=(stageW-displayedW)/2+cropState.x;
+    const top=(stageH-displayedH)/2+cropState.y;
 
-    // Actual image position inside the square crop viewport.
-    const left=(stageW-displayedW)/2+(cropState.x||0);
-    const top=(stageH-displayedH)/2+(cropState.y||0);
-
-    // Convert viewport coordinates back to original image pixels.
     let sx=(-left)/totalScale;
     let sy=(-top)/totalScale;
     let sw=stageW/totalScale;
     let sh=stageH/totalScale;
 
-    // Hard clamp to the real image bounds. This prevents empty/black canvas areas.
-    sw=Math.min(sw,img.naturalWidth);
-    sh=Math.min(sh,img.naturalHeight);
-    sx=Math.max(0,Math.min(img.naturalWidth-sw,sx));
-    sy=Math.max(0,Math.min(img.naturalHeight-sh,sy));
+    sw=Math.min(sw,cropState.sourceW);
+    sh=Math.min(sh,cropState.sourceH);
+    sx=Math.max(0,Math.min(cropState.sourceW-sw,sx));
+    sy=Math.max(0,Math.min(cropState.sourceH-sh,sy));
 
     const output=768;
     const canvas=document.createElement('canvas');
@@ -2507,19 +2605,28 @@ async function applyCrop(){
     const ctx=canvas.getContext('2d',{alpha:false});
     if(!ctx)throw new Error('Canvas недоступен');
 
-    // JPEG has no alpha; paint a real background first.
     ctx.fillStyle='#ffffff';
     ctx.fillRect(0,0,output,output);
     ctx.imageSmoothingEnabled=true;
     ctx.imageSmoothingQuality='high';
-    ctx.drawImage(img,sx,sy,sw,sh,0,0,output,output);
+    ctx.drawImage(cropState.source,sx,sy,sw,sh,0,0,output,output);
+
+    // Verify that the produced image is not blank/black by sampling pixels.
+    const sample=ctx.getImageData(0,0,output,output).data;
+    let luminance=0,samples=0;
+    const step=4*4096;
+    for(let i=0;i<sample.length;i+=step){
+      luminance+=sample[i]+sample[i+1]+sample[i+2];
+      samples++;
+    }
+    if(samples && luminance/samples<3){
+      throw new Error('Предпросмотр получился пустым. Попробуйте выбрать другое фото или JPG/PNG.');
+    }
 
     const blob=await new Promise((resolve,reject)=>{
       canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось подготовить JPEG')),'image/jpeg',0.88);
     });
-
-    if(blob.size<5000)throw new Error('Получилось пустое изображение. Попробуйте выбрать фото ещё раз.');
-    if(blob.size>3*1024*1024)throw new Error('Фото после обработки получилось слишком большим.');
+    if(blob.size<5000)throw new Error('Получилось пустое изображение');
 
     const data=await new Promise((resolve,reject)=>{
       const reader=new FileReader();
