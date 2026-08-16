@@ -1208,6 +1208,242 @@ textarea.field{
     min-height:44px;
   }
 }
+
+/* V8.16 — mobile spacing redesign */
+@media(max-width:760px){
+  .wrap{
+    padding:18px 14px 110px!important;
+  }
+
+  .top{
+    padding:12px 12px!important;
+    min-height:70px;
+    gap:10px!important;
+  }
+
+  .card,
+  .emp-edit-card,
+  .chat-sidebar,
+  .chat-main{
+    margin-bottom:18px!important;
+    border-radius:20px!important;
+  }
+
+  .card{
+    padding:19px!important;
+  }
+
+  .grid,
+  .grid3,
+  .emp-edit-grid,
+  .permission-grid,
+  .fulltext-tools,
+  .element-editor-grid,
+  .block-manager-grid{
+    grid-template-columns:1fr!important;
+    gap:14px!important;
+  }
+
+  .row{
+    gap:12px!important;
+  }
+
+  .field,
+  input.field,
+  select.field,
+  textarea.field{
+    margin:8px 0 14px!important;
+    min-height:48px;
+    padding:14px 15px!important;
+    border-radius:15px!important;
+  }
+
+  textarea.field{
+    min-height:120px;
+  }
+
+  label{
+    margin:14px 0 7px!important;
+  }
+
+  .btn,
+  button.btn{
+    min-height:46px!important;
+    padding:12px 16px!important;
+    border-radius:14px!important;
+    margin:3px 0!important;
+  }
+
+  .emp-edit-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+    margin-top:16px!important;
+  }
+
+  .toggle-line{
+    padding:12px!important;
+    border-radius:14px!important;
+    margin-bottom:8px;
+  }
+
+  .permission-panel{
+    padding:15px!important;
+    margin-top:16px!important;
+    border-radius:16px!important;
+  }
+
+  .listitem{
+    padding:14px 0!important;
+  }
+
+  .section-item{
+    margin-bottom:20px!important;
+  }
+
+  .section-item-image{
+    margin-bottom:12px!important;
+    border-radius:20px!important;
+  }
+
+  .home-task{
+    padding:15px!important;
+    margin-top:12px!important;
+  }
+
+  .home-news-feed{
+    margin-top:18px;
+    margin-bottom:20px;
+  }
+
+  .mobile-drawer-panel{
+    width:min(88vw,360px)!important;
+    padding:20px 16px 32px!important;
+  }
+
+  .mobile-menu-item{
+    margin-bottom:8px!important;
+    padding:14px 15px!important;
+    border-radius:14px!important;
+  }
+
+  .mobile-menu-section-title{
+    margin:18px 8px 8px!important;
+  }
+
+  .chat-layout{
+    gap:16px!important;
+  }
+
+  .chat-row{
+    padding:14px 12px!important;
+  }
+
+  .chat-tools{
+    padding:14px!important;
+  }
+
+  .chat-head{
+    padding:14px!important;
+    gap:10px!important;
+    flex-wrap:wrap;
+  }
+
+  .chat-compose{
+    padding:12px!important;
+  }
+
+  .compose-row{
+    gap:8px!important;
+  }
+
+  .compose-row textarea{
+    min-height:48px!important;
+  }
+
+  .manage-dropdown{
+    top:132px!important;
+    right:12px!important;
+    left:12px!important;
+    padding:10px!important;
+    border-radius:18px!important;
+  }
+
+  .manage-dropdown button{
+    padding:13px 14px!important;
+    margin:4px 0!important;
+    border-radius:12px!important;
+  }
+
+  .install-card{
+    padding:18px!important;
+  }
+
+  .install-steps{
+    gap:12px!important;
+  }
+
+  .install-step{
+    padding:13px!important;
+  }
+
+  h1,h2,h3{
+    margin-bottom:12px!important;
+  }
+
+  p{
+    margin-top:8px!important;
+    margin-bottom:14px!important;
+  }
+
+  .score{
+    font-size:30px!important;
+  }
+
+  .avatar{
+    width:56px!important;
+    height:56px!important;
+  }
+}
+
+@media(max-width:420px){
+  .wrap{
+    padding-left:12px!important;
+    padding-right:12px!important;
+  }
+
+  .card{
+    padding:17px!important;
+  }
+
+  .btn,
+  button.btn{
+    width:100%;
+  }
+
+  .row .btn{
+    width:auto;
+    flex:1 1 140px;
+  }
+
+  .chat-head .btn{
+    flex:1 1 auto;
+  }
+
+  .mobile-menu-toggle{
+    width:42px!important;
+    height:42px!important;
+  }
+
+  .logo{
+    width:46px!important;
+    height:46px!important;
+  }
+
+  .brand b{
+    font-size:14px!important;
+  }
+}
 </style></head><body><header class="top" data-ui-block="global.header"><button class="mobile-menu-toggle" onclick="openMobileMenu()" aria-label="Открыть меню"><span></span><span></span><span></span></button><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><div id="mobileDrawer" class="mobile-drawer">
   <div class="mobile-drawer-backdrop" onclick="closeMobileMenu()"></div>
   <aside class="mobile-drawer-panel">
