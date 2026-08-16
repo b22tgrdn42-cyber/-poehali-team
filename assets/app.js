@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.2.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.2.4';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -257,6 +257,23 @@ async function forceAppUpdate(){
   }catch{}
   location.reload(true);
 }
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && token && (role==='employee'||role==='supervisor')){
+    setTimeout(()=>enforceStrictPushGate(null,false),180);
+  }
+});
+window.addEventListener('focus',()=>{
+  if(token && (role==='employee'||role==='supervisor')){
+    setTimeout(()=>enforceStrictPushGate(null,false),180);
+  }
+});
+window.addEventListener('online',()=>{
+  if(token && (role==='employee'||role==='supervisor')){
+    setTimeout(()=>enforceStrictPushGate(null,false),180);
+  }
+});
+
 window.addEventListener('error',e=>console.error('window error',e.error||e.message));
 window.addEventListener('unhandledrejection',e=>console.error('unhandled rejection',e.reason));
 setTimeout(checkAppVersion,1600);
@@ -1203,38 +1220,95 @@ async function ensurePushSubscription(){
 }
 
 
+
 function isPushSupported(){
   return ('Notification' in window) && ('serviceWorker' in navigator) && ('PushManager' in window);
 }
-async function hasValidPushSubscription(){
-  if(!isPushSupported() || Notification.permission!=='granted')return false;
+
+let strictPushCheckRunning=false;
+let strictPushSatisfied=false;
+let strictPushResume=null;
+
+async function getCurrentPushState(){
+  const result={
+    supported:isPushSupported(),
+    permission:('Notification' in window)?Notification.permission:'unsupported',
+    registered:false,
+    valid:false,
+    reason:''
+  };
+
+  if(!result.supported){
+    result.reason='unsupported';
+    return result;
+  }
+  if(result.permission!=='granted'){
+    result.reason=result.permission;
+    return result;
+  }
+
   try{
+    await navigator.serviceWorker.register('/sw.js?v='+APP_VERSION);
     const reg=await navigator.serviceWorker.ready;
     const sub=await reg.pushManager.getSubscription();
-    if(!sub)return false;
+    if(!sub){
+      result.reason='no-subscription';
+      return result;
+    }
+
     const key=await api('push/key');
-    if(!key.publicKey)return false;
+    if(!key.publicKey){
+      result.reason='server-key-missing';
+      return result;
+    }
+
     const current=uint8ToB64Url(sub.options?.applicationServerKey);
-    return !!current && current===key.publicKey;
+    if(!current || current!==key.publicKey){
+      result.reason='vapid-mismatch';
+      return result;
+    }
+
+    // Re-register it on every validation. This repairs cases where the browser
+    // still has a subscription but the DB was reset by the manager.
+    await api('push/subscribe',{
+      method:'POST',
+      body:JSON.stringify({subscription:sub.toJSON()})
+    });
+
+    result.registered=true;
+    result.valid=true;
+    return result;
   }catch(e){
-    console.warn('push validity check failed',e);
-    return false;
+    console.warn('push state validation failed',e);
+    result.reason=e.message||'validation-error';
+    return result;
   }
 }
-function closeMandatoryPushGate(){
-  const gate=$('#mandatoryPushGate');
-  if(gate)gate.remove();
-  document.body.classList.remove('push-gate-open');
-}
-function mandatoryPushInstruction(){
+
+function mandatoryPushInstruction(state){
   const ua=navigator.userAgent||'';
   const ios=/iPhone|iPad|iPod/i.test(ua);
-  if(ios && !isStandaloneApp()){
-    return 'На iPhone push-уведомления работают после добавления сайта на экран «Домой». Добавьте сайт на главный экран, откройте его с иконки и повторите подключение.';
+
+  if(!state?.supported){
+    return 'Это устройство или браузер не поддерживает push-уведомления. Для доступа используйте современный браузер с поддержкой уведомлений.';
   }
-  return 'Разрешение на уведомления заблокировано в браузере. Откройте настройки сайта/браузера, разрешите уведомления для этого сайта и нажмите «Проверить снова».';
+
+  if(ios && !isStandaloneApp()){
+    return 'На iPhone сначала добавьте сайт на экран «Домой», затем откройте его именно с иконки. После этого разрешите уведомления.';
+  }
+
+  if(state?.permission==='denied'){
+    return 'Уведомления заблокированы в настройках браузера. Разрешите уведомления для этого сайта, затем вернитесь сюда и нажмите «Проверить снова».';
+  }
+
+  if(state?.reason==='server-key-missing'){
+    return 'Push-сервер временно не настроен. Обратитесь к управляющему.';
+  }
+
+  return 'Для работы с сайтом необходимо включить уведомления.';
 }
-function renderMandatoryPushGate(message=''){
+
+function renderStrictPushGate(state={},message=''){
   let gate=$('#mandatoryPushGate');
   if(!gate){
     gate=document.createElement('div');
@@ -1242,117 +1316,252 @@ function renderMandatoryPushGate(message=''){
     gate.className='mandatory-push-gate';
     document.body.appendChild(gate);
   }
+
   document.body.classList.add('push-gate-open');
-  const permission=('Notification' in window)?Notification.permission:'unsupported';
-  const supported=isPushSupported();
+  strictPushSatisfied=false;
+
+  const canRequest=state.supported && state.permission!=='denied';
+  const mainLabel=state.permission==='granted'
+    ? 'Подключить уведомления'
+    : 'Разрешить уведомления';
 
   gate.innerHTML=`<div class="mandatory-push-card">
     <img src="/assets/logo.png" class="mandatory-push-logo" alt="">
-    <h2>Включите уведомления</h2>
-    <p>Уведомления нужны для новостей, общих заданий, индивидуальных заданий, конкурсов и важных сообщений команды.</p>
+    <h2>Уведомления обязательны</h2>
+    <p>Без включённых push-уведомлений доступ к кабинету сотрудника закрыт.</p>
+
+    <div class="mandatory-push-list">
+      <div>📰 новые новости</div>
+      <div>✅ общие задания</div>
+      <div>🎯 личные задания</div>
+      <div>🏆 конкурсы и важные события</div>
+    </div>
+
     ${message?`<div class="mandatory-push-message">${esc(message)}</div>`:''}
-    ${!supported
-      ? `<div class="mandatory-push-message warning">${esc(mandatoryPushInstruction())}</div>`
-      : permission==='denied'
-        ? `<div class="mandatory-push-message warning">${esc(mandatoryPushInstruction())}</div>`
-        : `<button class="btn red mandatory-push-main" onclick="requestMandatoryPush()">Разрешить уведомления</button>`
+    ${(!state.supported || state.permission==='denied' || state.reason==='server-key-missing')
+      ? `<div class="mandatory-push-message warning">${esc(mandatoryPushInstruction(state))}</div>`
+      : ''
     }
-    <button class="btn light" onclick="retryMandatoryPush()">Проверить снова</button>
-    <small>Доступ в кабинет откроется после подключения push-уведомлений.</small>
+
+    ${canRequest
+      ? `<button class="btn red mandatory-push-main" onclick="requestStrictPushPermission()">${mainLabel}</button>`
+      : ''
+    }
+
+    <button class="btn light" onclick="verifyStrictPushAgain()">Проверить снова</button>
+    <small>После успешного подключения кабинет откроется автоматически.</small>
   </div>`;
+
+  // Make sure it is always the top-most element even after messenger/tutorial renders.
+  document.body.appendChild(gate);
 }
-async function requestMandatoryPush(){
-  if(!isPushSupported()){
-    renderMandatoryPushGate(mandatoryPushInstruction());
-    return false;
+
+function closeStrictPushGate(){
+  const gate=$('#mandatoryPushGate');
+  if(gate)gate.remove();
+  document.body.classList.remove('push-gate-open');
+}
+
+async function createOrRepairPushSubscription(){
+  if(!isPushSupported())throw new Error('Push-уведомления не поддерживаются этим браузером');
+
+  const key=await api('push/key');
+  if(!key.publicKey)throw new Error('Push-сервер не настроен');
+
+  await navigator.serviceWorker.register('/sw.js?v='+APP_VERSION);
+  const reg=await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+
+  if(sub){
+    const current=uint8ToB64Url(sub.options?.applicationServerKey);
+    if(!current || current!==key.publicKey){
+      try{
+        await api('push/unsubscribe',{
+          method:'POST',
+          body:JSON.stringify({endpoint:sub.endpoint})
+        });
+      }catch{}
+      try{await sub.unsubscribe()}catch{}
+      sub=null;
+    }
   }
+
+  if(!sub){
+    sub=await reg.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:b64ToUint8Array(key.publicKey)
+    });
+  }
+
+  await api('push/subscribe',{
+    method:'POST',
+    body:JSON.stringify({subscription:sub.toJSON()})
+  });
+
+  return sub;
+}
+
+async function requestStrictPushPermission(){
+  if(strictPushCheckRunning)return;
+  strictPushCheckRunning=true;
+
   try{
+    if(!isPushSupported()){
+      const state=await getCurrentPushState();
+      renderStrictPushGate(state);
+      return false;
+    }
+
     let permission=Notification.permission;
+
+    // This is called directly from a user click in the gate, which is required
+    // by Safari/Chrome for a reliable system permission prompt.
     if(permission==='default'){
       permission=await Notification.requestPermission();
     }
+
     if(permission!=='granted'){
-      renderMandatoryPushGate(mandatoryPushInstruction());
+      const state=await getCurrentPushState();
+      renderStrictPushGate(state);
       return false;
     }
 
-    const key=await api('push/key');
-    if(!key.publicKey){
-      renderMandatoryPushGate('Push-сервер временно не настроен. Сообщите управляющему.');
+    await createOrRepairPushSubscription();
+
+    const finalState=await getCurrentPushState();
+    if(!finalState.valid){
+      renderStrictPushGate(finalState,'Разрешение получено, но подписку не удалось зарегистрировать.');
       return false;
     }
 
-    await navigator.serviceWorker.register('/sw.js?v='+APP_VERSION);
-    const reg=await navigator.serviceWorker.ready;
-    let sub=await reg.pushManager.getSubscription();
+    strictPushSatisfied=true;
+    closeStrictPushGate();
 
-    if(sub){
-      const current=uint8ToB64Url(sub.options?.applicationServerKey);
-      if(!current || current!==key.publicKey){
-        try{await api('push/unsubscribe',{method:'POST',body:JSON.stringify({endpoint:sub.endpoint})})}catch{}
-        try{await sub.unsubscribe()}catch{}
-        sub=null;
-      }
-    }
+    const resume=strictPushResume;
+    strictPushResume=null;
+    if(resume)await resume();
 
-    if(!sub){
-      sub=await reg.pushManager.subscribe({
-        userVisibleOnly:true,
-        applicationServerKey:b64ToUint8Array(key.publicKey)
-      });
-    }
-
-    await api('push/subscribe',{
-      method:'POST',
-      body:JSON.stringify({subscription:sub.toJSON()})
-    });
-
-    closeMandatoryPushGate();
     return true;
   }catch(e){
-    console.error('mandatory push setup failed',e);
-    renderMandatoryPushGate(e.message||'Не удалось подключить уведомления. Попробуйте ещё раз.');
+    console.error('strict push setup failed',e);
+    const state=await getCurrentPushState();
+    renderStrictPushGate(state,e.message||'Не удалось подключить уведомления.');
     return false;
+  }finally{
+    strictPushCheckRunning=false;
   }
 }
-async function retryMandatoryPush(){
-  const ok=await hasValidPushSubscription();
-  if(ok){
-    closeMandatoryPushGate();
-    await continueAfterMandatoryPush();
-    return;
-  }
-  if(Notification.permission==='granted'){
-    const connected=await requestMandatoryPush();
-    if(connected)await continueAfterMandatoryPush();
-  }else{
-    renderMandatoryPushGate();
+
+async function verifyStrictPushAgain(){
+  if(strictPushCheckRunning)return;
+  strictPushCheckRunning=true;
+
+  try{
+    const state=await getCurrentPushState();
+    if(state.valid){
+      strictPushSatisfied=true;
+      closeStrictPushGate();
+
+      const resume=strictPushResume;
+      strictPushResume=null;
+      if(resume)await resume();
+
+      return true;
+    }
+
+    // If browser permission is already granted, repair/register without asking again.
+    if(state.permission==='granted'){
+      await createOrRepairPushSubscription();
+      const repaired=await getCurrentPushState();
+      if(repaired.valid){
+        strictPushSatisfied=true;
+        closeStrictPushGate();
+
+        const resume=strictPushResume;
+        strictPushResume=null;
+        if(resume)await resume();
+
+        return true;
+      }
+      renderStrictPushGate(repaired);
+      return false;
+    }
+
+    renderStrictPushGate(state);
+    return false;
+  }catch(e){
+    const state=await getCurrentPushState();
+    renderStrictPushGate(state,e.message||'Не удалось проверить уведомления.');
+    return false;
+  }finally{
+    strictPushCheckRunning=false;
   }
 }
-let pendingPostLoginContinuation=null;
+
+async function enforceStrictPushGate(resumeCallback=null,autoRequest=false){
+  // Only employee/supervisor sessions are subject to the rule.
+  if(!token || !(role==='employee'||role==='supervisor')){
+    return true;
+  }
+
+  if(resumeCallback)strictPushResume=resumeCallback;
+
+  const state=await getCurrentPushState();
+  if(state.valid){
+    strictPushSatisfied=true;
+    closeStrictPushGate();
+    return true;
+  }
+
+  renderStrictPushGate(state);
+
+  // Browsers may reject permission prompts without a direct user gesture.
+  // We still try once immediately after login, then keep the blocking gate visible.
+  if(autoRequest && state.supported && state.permission==='default'){
+    try{
+      const permission=await Notification.requestPermission();
+      if(permission==='granted'){
+        await createOrRepairPushSubscription();
+        const after=await getCurrentPushState();
+        if(after.valid){
+          strictPushSatisfied=true;
+          closeStrictPushGate();
+          return true;
+        }
+      }
+    }catch(e){
+      console.warn('automatic permission prompt was blocked by browser',e);
+    }
+  }
+
+  return false;
+}
+
+// Backward-compatible names used by older parts of the app.
+async function hasValidPushSubscription(){
+  return (await getCurrentPushState()).valid;
+}
+async function ensurePushSubscription(){
+  if(!token || !(role==='employee'||role==='supervisor'))return;
+  const state=await getCurrentPushState();
+  if(state.permission==='granted' && !state.valid){
+    try{await createOrRepairPushSubscription()}catch(e){console.warn('push repair failed',e)}
+  }
+}
+async function requestMandatoryPush(){return requestStrictPushPermission()}
+async function retryMandatoryPush(){return verifyStrictPushAgain()}
+function renderMandatoryPushGate(message=''){
+  getCurrentPushState().then(s=>renderStrictPushGate(s,message));
+}
+function closeMandatoryPushGate(){closeStrictPushGate()}
 async function requirePushBeforeCabinet(continuation){
-  pendingPostLoginContinuation=continuation;
-  const valid=await hasValidPushSubscription();
-  if(valid){
-    pendingPostLoginContinuation=null;
-    return continuation();
-  }
-
-  renderMandatoryPushGate();
-
-  // The PIN submit is a user action. Trigger the permission request immediately
-  // while we are still inside that interaction path.
-  const connected=await requestMandatoryPush();
-  if(connected){
-    const next=pendingPostLoginContinuation;
-    pendingPostLoginContinuation=null;
-    if(next)return next();
-  }
+  const ok=await enforceStrictPushGate(continuation,true);
+  if(ok && continuation)return continuation();
 }
 async function continueAfterMandatoryPush(){
-  const next=pendingPostLoginContinuation;
-  pendingPostLoginContinuation=null;
-  if(next)return next();
+  const resume=strictPushResume;
+  strictPushResume=null;
+  if(resume)return resume();
 }
 
 async function showEmployeeWelcome(){
@@ -1380,7 +1589,7 @@ async function showEmployeeWelcome(){
 }
 
 async function empLogin(){try{if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');let j=await api('login/employee',{method:'POST',body:JSON.stringify({id:+selectedEmployeeId,pin:$('#pin').value})});token=j.token;role=(j.access_role==='supervisor'?'supervisor':'employee');localStorage.token=token;localStorage.role=role;showEmployeeWelcome()}catch(e){toast(e.message)}}
-let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');setTimeout(ensurePushSubscription,250);if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
+let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');const pushOK=await enforceStrictPushGate(null,true);if(!pushOK)return;setTimeout(ensurePushSubscription,250);if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 ${installHintHtml()}
 ${homeNewsHtml(state.news)}
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
@@ -1857,6 +2066,7 @@ function savePhoto(){startProfileCrop($('#pfile'))}
 let umtab='home';
 async function unifiedManager(){document.body.classList.add('authenticated');
   try{
+    const gateOK=await enforceStrictPushGate(null,true);if(!gateOK)return;
     const personal=state&&state.employee?state:await api('me');
     const admin=await api('admin/state');
     state={...admin,personal};
@@ -2495,7 +2705,7 @@ function newsAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Но�
 function addNews(){file64($('#nimg'),async p=>{let r=await api('admin/news',{method:'POST',body:JSON.stringify({title:$('#nt').value,category:$('#nc').value,body:$('#nb').value,event_date:$('#nd').value||null,image:p,pinned:$('#np').checked,requires_ack:$('#na').checked,active:true})});toast(r.push&&r.push.sent>0?`Новость опубликована · уведомлений: ${r.push.sent}`:'Новость опубликована');manager()})}
 async function del(kind,id){if(!confirm('Переместить в архив? Данные можно будет восстановить.'))return;await api('admin/'+kind,{method:'DELETE',body:JSON.stringify({id})});manager()}async function saveSettings(){await api('admin/settings',{method:'POST',body:JSON.stringify({season:$('#season').value,level_step:+$('#levelstep').value,manager_pin:$('#newmpin').value||null})});toast('Настройки сохранены');manager()}
 
-async function supervisor(){document.body.classList.add('authenticated');try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
+async function supervisor(){const gateOK=await enforceStrictPushGate(null,true);if(!gateOK)return;document.body.classList.add('authenticated');try{state=await api('supervisor/state');$('#who').innerHTML=`<span class=supervisor-badge>Наблюдатель</span> <button class="btn light" onclick="logout()">Выйти</button>`;renderSupervisor()}catch{logout()}}
 function renderSupervisor(){let team=state.employees.filter(e=>e.team_member),others=state.employees.filter(e=>!e.team_member);$('#app').innerHTML=`<div class="card hero"><h2>Панель руководителя</h2><p>Просмотр прогресса команды без доступа к начислению баллов и изменению настроек.</p></div><div class=grid><div class=card><h3>Команда</h3>${team.map((e,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${e.photo||'/assets/logo.png'}"><span>${esc(e.name)}<br><small>${esc(e.position)}</small></span><b style="margin-left:auto">${e.points}</b></div>`).join('')}</div><div class=card><h3>Текущие задания</h3>${state.pending.map(t=>`<div class=listitem><b>${esc(t.employee_name)}</b> — ${esc(t.title)}<br><small>${t.status==='submitted'?'На проверке':'Назначено'}${t.due_date?' · до '+new Date(t.due_date).toLocaleDateString('ru'):''}</small></div>`).join('')||'Нет активных заданий'}</div></div><div class=grid><div class=card><h3>Последние достижения</h3>${state.achievements.slice(0,30).map(a=>{let e=state.employees.find(x=>x.id===a.employee_id);return `<div class=listitem>${esc(a.icon)} <b>${esc(e?.name||'')}</b> — ${esc(a.title)}</div>`}).join('')||'Пока нет достижений'}</div><div class=card><h3>Конкурс</h3>${state.competition?state.competition.board.map((x,i)=>`<div class=listitem>${i+1}. <b>${esc(x.name)}</b> — ${x.score}</div>`).join(''):'Нет активного конкурса'}${others.length?`<hr><small>Не участвуют в рейтинге: ${others.map(x=>esc(x.name)).join(', ')}</small>`:''}</div></div>`;animateSection()}
 
 (async()=>{await loadUiText();applyChromeText();startReplacementObserver();const q=new URLSearchParams(location.search),open=q.get('open');if(['tasks','news','competition','messenger'].includes(open))etab=open;if(token&&role==='manager'){logout();return}if(token&&role==='employee')employee();else if(token&&role==='supervisor')supervisor();else login()})();

@@ -2137,3 +2137,39 @@ body.tutorial-open #app{
   filter:none!important;
   transform:none!important;
 }
+
+/* V9.2.4 strict push access gate */
+#mandatoryPushGate{
+  z-index:2147483600!important;
+}
+body.push-gate-open #app,
+body.push-gate-open header,
+body.push-gate-open .mobile-drawer,
+body.push-gate-open #tutorialOverlay,
+body.push-gate-open #tutorialOffer{
+  pointer-events:none!important;
+}
+#mandatoryPushGate,
+#mandatoryPushGate *{
+  pointer-events:auto!important;
+}
+.mandatory-push-list{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:14px 0 16px;
+  text-align:left;
+}
+.mandatory-push-list > div{
+  padding:10px 11px;
+  border-radius:12px;
+  background:rgba(255,255,255,.66);
+  border:1px solid var(--line);
+  font-size:12px;
+  font-weight:750;
+}
+@media(max-width:520px){
+  .mandatory-push-list{
+    grid-template-columns:1fr;
+  }
+}
