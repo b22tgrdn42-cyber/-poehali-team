@@ -7,7 +7,7 @@ const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
-  webpush.setVapidDetails('mailto:admin@poehali-team.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'https://komanda-poehali.vercel.app',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
 }
 async function sendPushToEmployee(employeeId,payload){
   const result={configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:0,sent:0,failed:0,errors:[]};
@@ -91,6 +91,53 @@ async function init(){
    auth text not null,
    created_at timestamptz default now()
  )`;
+
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS messenger_access boolean DEFAULT false`;
+ await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_seen timestamptz`;
+ await sql`CREATE TABLE IF NOT EXISTS chats (
+   id serial primary key,
+   type text not null default 'direct',
+   title text default '',
+   created_by int references employees(id) on delete set null,
+   created_at timestamptz default now()
+ )`;
+ await sql`CREATE TABLE IF NOT EXISTS chat_members (
+   chat_id int references chats(id) on delete cascade,
+   employee_id int references employees(id) on delete cascade,
+   joined_at timestamptz default now(),
+   last_read_at timestamptz default now(),
+   primary key(chat_id,employee_id)
+ )`;
+ await sql`CREATE TABLE IF NOT EXISTS messages (
+   id serial primary key,
+   chat_id int references chats(id) on delete cascade,
+   sender_id int references employees(id) on delete set null,
+   body text default '',
+   image text,
+   reply_to int references messages(id) on delete set null,
+   edited_at timestamptz,
+   deleted boolean default false,
+   created_at timestamptz default now()
+ )`;
+ await sql`CREATE TABLE IF NOT EXISTS message_reactions (
+   message_id int references messages(id) on delete cascade,
+   employee_id int references employees(id) on delete cascade,
+   reaction text not null,
+   created_at timestamptz default now(),
+   primary key(message_id,employee_id,reaction)
+ )`;
+ await sql`CREATE TABLE IF NOT EXISTS chat_typing (
+   chat_id int references chats(id) on delete cascade,
+   employee_id int references employees(id) on delete cascade,
+   touched_at timestamptz default now(),
+   primary key(chat_id,employee_id)
+ )`;
+
+ await sql`CREATE TABLE IF NOT EXISTS ui_texts (
+   key text primary key,
+   value text not null,
+   updated_at timestamptz default now()
+ )`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -107,14 +154,42 @@ function token(payload){return jwt.sign(payload,SECRET,{expiresIn:'30d'});}
 function auth(req){try{const h=req.headers.authorization||'';return jwt.verify(h.replace('Bearer ',''),SECRET)}catch{return null}}
 function ok(res,data,status=200){res.status(status).json(data)}
 async function body(req){return req.body||{}}
+
+async function messengerAllowed(employeeId){
+  const r=await sql`SELECT active,messenger_access FROM employees WHERE id=${employeeId}`;
+  return !!(r.length&&r[0].active&&r[0].messenger_access);
+}
+async function isChatMember(chatId,employeeId){
+  const r=await sql`SELECT 1 FROM chat_members WHERE chat_id=${chatId} AND employee_id=${employeeId}`;
+  return !!r.length;
+}
+async function messagePush(chatId,senderId,messageId,body){
+  const sender=(await sql`SELECT name FROM employees WHERE id=${senderId}`)[0];
+  const members=await sql`SELECT employee_id FROM chat_members WHERE chat_id=${chatId} AND employee_id<>${senderId}`;
+  for(const m of members){
+    if(await messengerAllowed(m.employee_id)){
+      await sendPushToEmployee(m.employee_id,{
+        title:'💬 '+(sender?.name||'Новое сообщение'),
+        body:(body||'Фото').slice(0,120),
+        url:'/?open=messenger&chat='+chatId,
+        tag:'message-'+messageId
+      });
+    }
+  }
+}
 module.exports=async(req,res)=>{
  try{
   await init(); const path=(req.query.path||'').toString(); const u=auth(req);
-  if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,access_role,team_member FROM employees WHERE active=true ORDER BY name`)}
+  if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true ORDER BY name`)}
   if(req.method==='POST'&&path==='login/employee'){const b=await body(req); const rows=await sql`SELECT * FROM employees WHERE id=${b.id} AND active=true`; if(!rows.length||!(await bcrypt.compare(String(b.pin||''),rows[0].pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:(rows[0].access_role==='supervisor'?'supervisor':'employee'),id:rows[0].id}),access_role:rows[0].access_role||'employee'})}
   if(req.method==='POST'&&path==='login/manager'){const b=await body(req); const s=(await sql`SELECT manager_pin_hash FROM settings WHERE id=1`)[0]; if(!(await bcrypt.compare(String(b.pin||''),s.manager_pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:'manager'})})}
   if(req.method==='GET'&&path==='push/key'){return ok(res,{publicKey:VAPID_PUBLIC_KEY})}
+  if(req.method==='GET'&&path==='content'){
+    const rows=await sql`SELECT key,value FROM ui_texts ORDER BY key`;
+    return ok(res,Object.fromEntries(rows.map(x=>[x.key,x.value])))
+  }
   if(!u) return ok(res,{error:'Требуется вход'},401);
+  const b=await body(req);
 
   if(req.method==='POST'&&path==='push/subscribe'&&(u.role==='employee'||u.role==='supervisor')){
     const b=await body(req),s=b.subscription||{};
@@ -149,7 +224,122 @@ module.exports=async(req,res)=>{
     return ok(res,{ok:true})
   }
 
-  if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,points,photo,active,access_role,team_member FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
+
+  if((u.role==='employee'||u.role==='supervisor') && u.id){
+    await sql`UPDATE employees SET last_seen=now() WHERE id=${u.id}`;
+  }
+
+  if(req.method==='GET'&&path==='messenger/state'&&(u.role==='employee'||u.role==='supervisor')){
+    if(!(await messengerAllowed(u.id)))return ok(res,{error:'Доступ к мессенджеру не предоставлен'},403);
+    const people=await sql`SELECT id,name,position,photo,last_seen FROM employees WHERE active=true AND messenger_access=true AND id<>${u.id} ORDER BY name`;
+    const chats=await sql`
+      SELECT c.id,c.type,c.title,c.created_at,
+        COALESCE((SELECT m.body FROM messages m WHERE m.chat_id=c.id AND m.deleted=false ORDER BY m.id DESC LIMIT 1),'') last_message,
+        (SELECT m.created_at FROM messages m WHERE m.chat_id=c.id ORDER BY m.id DESC LIMIT 1) last_message_at,
+        (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id AND m.created_at>cm.last_read_at AND m.sender_id<>${u.id}) unread
+      FROM chats c JOIN chat_members cm ON cm.chat_id=c.id
+      WHERE cm.employee_id=${u.id}
+      ORDER BY COALESCE((SELECT max(m.created_at) FROM messages m WHERE m.chat_id=c.id),c.created_at) DESC`;
+    for(const c of chats){
+      const members=await sql`SELECT e.id,e.name,e.position,e.photo,e.last_seen FROM employees e JOIN chat_members cm ON cm.employee_id=e.id WHERE cm.chat_id=${c.id} ORDER BY e.name`;
+      c.members=members;
+      if(c.type==='direct'){
+        const other=members.find(x=>x.id!==u.id);
+        c.display_title=other?.name||'Личный чат'; c.photo=other?.photo||null;
+      }else c.display_title=c.title||'Группа';
+    }
+    return ok(res,{people,chats})
+  }
+
+  if(req.method==='POST'&&path==='messenger/direct'&&(u.role==='employee'||u.role==='supervisor')){
+    if(!(await messengerAllowed(u.id)) || !(await messengerAllowed(b.employee_id)))return ok(res,{error:'Нет доступа к мессенджеру'},403);
+    const existing=await sql`
+      SELECT c.id FROM chats c
+      WHERE c.type='direct'
+      AND EXISTS(SELECT 1 FROM chat_members a WHERE a.chat_id=c.id AND a.employee_id=${u.id})
+      AND EXISTS(SELECT 1 FROM chat_members z WHERE z.chat_id=c.id AND z.employee_id=${b.employee_id})
+      AND (SELECT count(*) FROM chat_members cm WHERE cm.chat_id=c.id)=2
+      LIMIT 1`;
+    if(existing.length)return ok(res,{id:existing[0].id});
+    const c=await sql`INSERT INTO chats(type,created_by) VALUES('direct',${u.id}) RETURNING id`;
+    await sql`INSERT INTO chat_members(chat_id,employee_id) VALUES(${c[0].id},${u.id}),(${c[0].id},${b.employee_id})`;
+    return ok(res,{id:c[0].id})
+  }
+
+  if(req.method==='POST'&&path==='messenger/group'&&(u.role==='employee'||u.role==='supervisor')){
+    if(!(await messengerAllowed(u.id)))return ok(res,{error:'Нет доступа к мессенджеру'},403);
+    const ids=[...new Set([u.id,...(Array.isArray(b.member_ids)?b.member_ids.map(Number):[])])];
+    if(ids.length<2)return ok(res,{error:'Добавьте хотя бы одного участника'},400);
+    for(const id of ids)if(!(await messengerAllowed(id)))return ok(res,{error:'У одного из участников нет доступа к мессенджеру'},400);
+    const c=await sql`INSERT INTO chats(type,title,created_by) VALUES('group',${b.title||'Новая группа'},${u.id}) RETURNING id`;
+    for(const id of ids)await sql`INSERT INTO chat_members(chat_id,employee_id) VALUES(${c[0].id},${id})`;
+    return ok(res,{id:c[0].id})
+  }
+
+  if(req.method==='GET'&&path==='messenger/messages'&&(u.role==='employee'||u.role==='supervisor')){
+    const chatId=Number(req.query.chat_id);
+    if(!(await messengerAllowed(u.id))||!(await isChatMember(chatId,u.id)))return ok(res,{error:'Нет доступа'},403);
+    const messages=await sql`
+      SELECT m.id,m.chat_id,m.sender_id,m.body,m.image,m.reply_to,m.edited_at,m.deleted,m.created_at,
+             e.name sender_name,e.photo sender_photo,
+             rm.body reply_body,re.name reply_sender
+      FROM messages m
+      LEFT JOIN employees e ON e.id=m.sender_id
+      LEFT JOIN messages rm ON rm.id=m.reply_to
+      LEFT JOIN employees re ON re.id=rm.sender_id
+      WHERE m.chat_id=${chatId}
+      ORDER BY m.id DESC LIMIT 120`;
+    messages.reverse();
+    for(const msg of messages){
+      msg.reactions=await sql`SELECT reaction,count(*)::int count,array_agg(employee_id) employee_ids FROM message_reactions WHERE message_id=${msg.id} GROUP BY reaction ORDER BY reaction`;
+    }
+    const typers=await sql`SELECT e.id,e.name FROM chat_typing t JOIN employees e ON e.id=t.employee_id WHERE t.chat_id=${chatId} AND t.employee_id<>${u.id} AND t.touched_at>now()-interval '6 seconds'`;
+    await sql`UPDATE chat_members SET last_read_at=now() WHERE chat_id=${chatId} AND employee_id=${u.id}`;
+    const members=await sql`SELECT e.id,e.name,e.position,e.photo,e.last_seen FROM employees e JOIN chat_members cm ON cm.employee_id=e.id WHERE cm.chat_id=${chatId} ORDER BY e.name`;
+    return ok(res,{messages,typers,members})
+  }
+
+  if(req.method==='POST'&&path==='messenger/messages'&&(u.role==='employee'||u.role==='supervisor')){
+    const chatId=Number(b.chat_id);
+    if(!(await messengerAllowed(u.id))||!(await isChatMember(chatId,u.id)))return ok(res,{error:'Нет доступа'},403);
+    if((b.image||'').length>1400000)return ok(res,{error:'Изображение слишком большое'},400);
+    if(!(b.body||'').trim()&&!b.image)return ok(res,{error:'Сообщение пустое'},400);
+    const r=await sql`INSERT INTO messages(chat_id,sender_id,body,image,reply_to) VALUES(${chatId},${u.id},${(b.body||'').trim()},${b.image||null},${b.reply_to||null}) RETURNING id`;
+    await sql`UPDATE chat_members SET last_read_at=now() WHERE chat_id=${chatId} AND employee_id=${u.id}`;
+    await messagePush(chatId,u.id,r[0].id,(b.body||'').trim());
+    return ok(res,{ok:true,id:r[0].id})
+  }
+
+  if(req.method==='PUT'&&path==='messenger/messages'&&(u.role==='employee'||u.role==='supervisor')){
+    const msg=(await sql`SELECT * FROM messages WHERE id=${b.id}`)[0];
+    if(!msg||msg.sender_id!==u.id)return ok(res,{error:'Нельзя редактировать это сообщение'},403);
+    await sql`UPDATE messages SET body=${(b.body||'').trim()},edited_at=now() WHERE id=${b.id}`;
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='DELETE'&&path==='messenger/messages'&&(u.role==='employee'||u.role==='supervisor')){
+    const msg=(await sql`SELECT * FROM messages WHERE id=${b.id}`)[0];
+    if(!msg||msg.sender_id!==u.id)return ok(res,{error:'Нельзя удалить это сообщение'},403);
+    await sql`UPDATE messages SET body='',image=null,deleted=true,edited_at=now() WHERE id=${b.id}`;
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='POST'&&path==='messenger/reaction'&&(u.role==='employee'||u.role==='supervisor')){
+    const msg=(await sql`SELECT chat_id FROM messages WHERE id=${b.message_id}`)[0];
+    if(!msg||!(await isChatMember(msg.chat_id,u.id)))return ok(res,{error:'Нет доступа'},403);
+    const ex=await sql`SELECT 1 FROM message_reactions WHERE message_id=${b.message_id} AND employee_id=${u.id} AND reaction=${b.reaction}`;
+    if(ex.length)await sql`DELETE FROM message_reactions WHERE message_id=${b.message_id} AND employee_id=${u.id} AND reaction=${b.reaction}`;
+    else await sql`INSERT INTO message_reactions(message_id,employee_id,reaction) VALUES(${b.message_id},${u.id},${b.reaction})`;
+    return ok(res,{ok:true})
+  }
+
+  if(req.method==='POST'&&path==='messenger/typing'&&(u.role==='employee'||u.role==='supervisor')){
+    const chatId=Number(b.chat_id);
+    if(!(await isChatMember(chatId,u.id)))return ok(res,{error:'Нет доступа'},403);
+    await sql`INSERT INTO chat_typing(chat_id,employee_id,touched_at) VALUES(${chatId},${u.id},now()) ON CONFLICT(chat_id,employee_id) DO UPDATE SET touched_at=now()`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,points,photo,active,access_role,team_member,messenger_access,last_seen FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
  const individualTasks=await sql`SELECT * FROM individual_tasks WHERE employee_id=${u.id} ORDER BY CASE status WHEN 'assigned' THEN 1 WHEN 'submitted' THEN 2 ELSE 3 END, due_date NULLS LAST, created_at DESC`;
  const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND active=true ORDER BY points,title`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; const mine=board.find(x=>x.id===u.id); competition={...comp,tasks:ct,board,my_score:mine?mine.score:0,my_place:board.findIndex(x=>x.id===u.id)+1};}
@@ -158,7 +348,7 @@ module.exports=async(req,res)=>{
   if(req.method==='POST'&&path==='news/ack'&&u.role==='employee'){const b=await body(req); await sql`INSERT INTO news_reads(news_id,employee_id) VALUES(${b.news_id},${u.id}) ON CONFLICT DO NOTHING`; return ok(res,{ok:true})}
 
   if(req.method==='GET'&&path==='supervisor/state'&&(u.role==='supervisor'||u.role==='manager')){
-    const employees=await sql`SELECT id,name,position,points,photo,active,team_member,access_role FROM employees WHERE active=true ORDER BY team_member DESC,points DESC,name`;
+    const employees=await sql`SELECT id,name,position,points,photo,active,team_member,access_role,messenger_access,last_seen FROM employees WHERE active=true ORDER BY team_member DESC,points DESC,name`;
     const achievements=await sql`SELECT ea.employee_id,a.title,a.icon,a.description,ea.created_at FROM employee_achievements ea JOIN achievements a ON a.id=ea.achievement_id ORDER BY ea.created_at DESC`;
     const pending=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.status IN ('assigned','submitted') ORDER BY it.status DESC,it.due_date NULLS LAST`;
     const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null;
@@ -168,13 +358,45 @@ module.exports=async(req,res)=>{
   }
 
   if(u.role!=='manager') return ok(res,{error:'Нет доступа'},403);
-  if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,points,active,photo,created_at,access_role,team_member FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
+
+  if(req.method==='GET'&&path==='admin/messenger'){
+    const users=await sql`SELECT id,name,position,photo,messenger_access,active,last_seen FROM employees ORDER BY name`;
+    const chats=await sql`SELECT c.*, (SELECT count(*)::int FROM chat_members cm WHERE cm.chat_id=c.id) members_count, (SELECT count(*)::int FROM messages m WHERE m.chat_id=c.id) messages_count FROM chats c ORDER BY c.created_at DESC`;
+    return ok(res,{users,chats})
+  }
+  if(req.method==='DELETE'&&path==='admin/messenger/chat'){
+    await sql`DELETE FROM chats WHERE id=${b.id}`; return ok(res,{ok:true})
+  }
+
+  if(req.method==='GET'&&path==='admin/content'){
+    const rows=await sql`SELECT key,value,updated_at FROM ui_texts ORDER BY key`;
+    return ok(res,rows)
+  }
+  if(req.method==='POST'&&path==='admin/content'){
+    if(!b.key)return ok(res,{error:'Не указан ключ'},400);
+    await sql`INSERT INTO ui_texts(key,value,updated_at) VALUES(${b.key},${String(b.value??'')},now())
+      ON CONFLICT(key) DO UPDATE SET value=${String(b.value??'')},updated_at=now()`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='POST'&&path==='admin/content/bulk'){
+    if(!Array.isArray(b.items))return ok(res,{error:'Некорректные данные'},400);
+    for(const item of b.items){
+      if(!item?.key)continue;
+      await sql`INSERT INTO ui_texts(key,value,updated_at) VALUES(${item.key},${String(item.value??'')},now())
+        ON CONFLICT(key) DO UPDATE SET value=${String(item.value??'')},updated_at=now()`;
+    }
+    return ok(res,{ok:true})
+  }
+  if(req.method==='DELETE'&&path==='admin/content'){
+    if(b.key)await sql`DELETE FROM ui_texts WHERE key=${b.key}`;
+    return ok(res,{ok:true})
+  }
+  if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} ORDER BY id`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; competition={...comp,tasks:ct,board};}
  const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
  return ok(res,{employees,tasks,prizes,achievements,news,history,settings:settings[0],competition,individualTasks})}
-  const b=await body(req);
-  if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,pin_hash,access_role,team_member) VALUES(${b.name},${b.position||''},${h},${b.access_role||'employee'},${b.team_member!==false}) RETURNING id`;return ok(res,r[0])}
-  if(req.method==='PUT'&&path==='admin/employees'){if(b.pin){const h=await bcrypt.hash(String(b.pin),10);await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false},pin_hash=${h} WHERE id=${b.id}`}else await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false} WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;return ok(res,r[0])}
+  if(req.method==='PUT'&&path==='admin/employees'){if(b.pin){const h=await bcrypt.hash(String(b.pin),10);await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false},messenger_access=${!!b.messenger_access},pin_hash=${h} WHERE id=${b.id}`}else await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false},messenger_access=${!!b.messenger_access} WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/employees'){await sql`DELETE FROM employees WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/tasks'){
