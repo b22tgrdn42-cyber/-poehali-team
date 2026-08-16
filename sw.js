@@ -5,8 +5,9 @@ self.addEventListener('push',event=>{
   try{data={...data,...event.data.json()}}catch{}
   event.waitUntil(self.registration.showNotification(data.title,{
     body:data.body,
-    icon:'/assets/logo.png',
-    badge:'/assets/logo.png',
+    icon:'/assets/push-icon-192.png',
+    badge:'/assets/push-badge-96.png',
+    image:data.image||undefined,
     tag:data.tag||'poehali',
     renotify:true,
     data:{url:data.url||'/'},
