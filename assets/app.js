@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.2.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.2.1';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -276,7 +276,11 @@ const TUTORIAL_SCHEMA_VERSION='2';
 let tutorialEvaluationTimer=null;
 function scheduleTutorialEvaluation(){
   clearTimeout(tutorialEvaluationTimer);
-  tutorialEvaluationTimer=setTimeout(()=>evaluateTutorialForCurrentUser(),650);
+  if(tutorialRuntimeActive||tutorialOfferActive)return;
+  tutorialEvaluationTimer=setTimeout(()=>{
+    if(tutorialRuntimeActive||tutorialOfferActive)return;
+    evaluateTutorialForCurrentUser();
+  },650);
 }
 
 
@@ -448,9 +452,13 @@ function capabilityTutorialSteps(keys,e){
 }
 
 let tutorialState={steps:[],index:0,employeeId:null,mode:'base',pendingCapabilities:null};
+let tutorialRuntimeActive=false;
+let tutorialOfferActive=false;
 
 function closeTutorial(saveProgress=false){
   $('#tutorialOverlay')?.classList.remove('open');
+  tutorialRuntimeActive=false;
+  tutorialOfferActive=false;
   document.body.classList.remove('tutorial-open');
   clearTutorialSpotlight();
   if(saveProgress && tutorialState.employeeId){
@@ -478,7 +486,8 @@ function navigateForTutorial(step){
   if(e?.position==='Управляющий' && typeof renderUnifiedManager==='function'){
     const target=tutorialSectionKey(step);
     if(typeof umtab!=='undefined' && umtab!==target){
-      umtab=target;renderUnifiedManager();
+      umtab=target;
+      renderUnifiedManager();
     }
   }else if(typeof renderEmp==='function'){
     const target=tutorialSectionKey(step);
@@ -504,10 +513,20 @@ function spotlightTutorialTarget(step){
 function renderTutorialStep(){
   const overlay=$('#tutorialOverlay'),card=$('#tutorialCard');
   if(!overlay||!card)return;
-  const step=tutorialState.steps[tutorialState.index];
+  tutorialRuntimeActive=true;
+  const currentIndex=tutorialState.index;
+  const step=tutorialState.steps[currentIndex];
   if(!step){finishTutorial();return}
   navigateForTutorial(step);
-  setTimeout(()=>spotlightTutorialTarget(step),120);
+
+  // renderUnifiedManager/renderEmp may run while moving between tutorial sections.
+  // Restore the same tutorial index after that render cycle.
+  tutorialState.index=currentIndex;
+  setTimeout(()=>{
+    if(tutorialRuntimeActive && tutorialState.index===currentIndex){
+      spotlightTutorialTarget(step);
+    }
+  },120);
 
   const total=tutorialState.steps.length,number=tutorialState.index+1;
   card.innerHTML=`
@@ -524,11 +543,13 @@ function renderTutorialStep(){
     </div>`;
 }
 function tutorialNext(){
+  if(!tutorialRuntimeActive)return;
   if(tutorialState.index>=tutorialState.steps.length-1){finishTutorial();return}
-  tutorialState.index++;
+  tutorialState.index=Math.min(tutorialState.index+1,tutorialState.steps.length-1);
   renderTutorialStep();
 }
 function tutorialPrev(){
+  if(!tutorialRuntimeActive)return;
   tutorialState.index=Math.max(0,tutorialState.index-1);
   renderTutorialStep();
 }
@@ -547,13 +568,22 @@ function skipTutorial(){
 }
 function beginTutorial(steps,mode,currentCapabilities){
   const e=tutorialEmployee();if(!e||!steps?.length)return;
-  tutorialState={steps,index:0,employeeId:e.id,mode,pendingCapabilities:currentCapabilities||null};
+  tutorialRuntimeActive=true;
+  tutorialOfferActive=false;
+  tutorialState={
+    steps:[...steps],
+    index:0,
+    employeeId:e.id,
+    mode,
+    pendingCapabilities:currentCapabilities?{...currentCapabilities}:null
+  };
   $('#tutorialOverlay')?.classList.add('open');
   document.body.classList.add('tutorial-open');
   renderTutorialStep();
 }
 function offerTutorial(steps,mode,currentCapabilities){
   const e=tutorialEmployee();if(!e||!steps?.length)return;
+  tutorialOfferActive=true;
   const title=mode==='base'?'Хотите быстро освоить сайт?':'У вас появились новые возможности';
   const text=mode==='base'
     ?'Проведём короткое пошаговое обучение по функциям, доступным именно вашему аккаунту.'
@@ -575,6 +605,7 @@ function offerTutorial(steps,mode,currentCapabilities){
 }
 function dismissTutorialOffer(mode){
   $('#tutorialOffer')?.classList.remove('open');
+  tutorialOfferActive=false;
   document.body.classList.remove('tutorial-open');
   // Preserve capability snapshot even if training is postponed, but store pending keys separately.
   if(tutorialState.employeeId && tutorialState.pendingCapabilities){
@@ -590,10 +621,18 @@ function dismissTutorialOffer(mode){
 }
 function acceptTutorialOffer(){
   $('#tutorialOffer')?.classList.remove('open');
-  const stateCopy={...tutorialState};
+  tutorialOfferActive=false;
+  const stateCopy={
+    steps:[...(tutorialState.steps||[])],
+    index:0,
+    employeeId:tutorialState.employeeId,
+    mode:tutorialState.mode,
+    pendingCapabilities:tutorialState.pendingCapabilities?{...tutorialState.pendingCapabilities}:null
+  };
   beginTutorial(stateCopy.steps,stateCopy.mode,stateCopy.pendingCapabilities);
 }
 async function evaluateTutorialForCurrentUser(){
+  if(tutorialRuntimeActive||tutorialOfferActive)return;
   const e=tutorialEmployee();if(!e?.id)return;
   const current=employeeCapabilityMap(e);
   const baseDone=tutorialSeen(e.id);
