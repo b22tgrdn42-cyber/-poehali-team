@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.1.1';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.1.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1425,9 +1425,15 @@ async function loadDiagnostics(){
        <div class=status-card><b>Service Worker</b><p class="${sw?'status-ok':'status-bad'}">● ${sw?'Активен':'Не найден'}</p><small>Разрешение браузера: ${esc(browserPush)}</small></div>
        <div class=status-card><b>Cron дней рождения</b><p class="${d.cron?.birthday_cron?'status-ok':'status-bad'}">● ${d.cron?.birthday_cron?'Есть последний запуск':'Запуск ещё не зафиксирован'}</p><small>${d.cron?.birthday_cron?.updated_at?new Date(d.cron.birthday_cron.updated_at).toLocaleString('ru'):'—'}</small></div>
        <div class=status-card><b>Резервные снимки</b><p class=status-ok>${d.counts.backups}</p><small>Хранятся в Neon</small></div>
-       <div class=status-card><b>Журнал действий</b><p class=status-ok>${d.counts.audit}</p><small>Событий записано</small></div><div class=status-card><b>Последний push</b><p class="${d.last_push?.value?.sent>0?'status-ok':'status-bad'}">● ${d.last_push?.value?`${d.last_push.value.sent||0} доставлено / ${d.last_push.value.failed||0} ошибок`:'Нет данных'}</p><small>${d.last_push?.value?.context?esc(d.last_push.value.context):'—'}</small></div>
+       <div class=status-card><b>Журнал действий</b><p class=status-ok>${d.counts.audit}</p><small>Событий записано</small></div>
+       <div class=status-card><b>Последний push</b><p class="${d.last_push?.value?.sent>0?'status-ok':'status-bad'}">● ${d.last_push?.value?`${d.last_push.value.sent||0} доставлено / ${d.last_push.value.failed||0} ошибок`:'Нет данных'}</p><small>${d.last_push?.value?.context?esc(d.last_push.value.context):'—'}</small></div>
      </div>
      <div class=row style="margin-top:14px"><button class="btn red" onclick="loadDiagnostics()">Обновить диагностику</button><button class="btn light" onclick="testPush()">Тест push на это устройство</button></div>
+   </div>
+   <div class="card danger-zone">
+     <h3>Push-уведомления</h3>
+     <p class=muted>Удаляет все зарегистрированные устройства из базы. После сброса сотрудникам потребуется снова зарегистрировать push-подписку на своих устройствах.</p>
+     <button class="btn red" onclick="resetAllPushSubscriptions()">Сбросить все Push-подписки</button>
    </div>`;
  }catch(e){root.innerHTML=`<div class=card><h2>Диагностика</h2><p class=status-bad>${esc(e.message)}</p></div>`}
 }
