@@ -90,23 +90,40 @@ window.addEventListener('appinstalled',()=>{
 
 
 function goHomeFromLogo(){
-  closeMobileMenu?.();
-  closeManageMenu?.();
+  try{closeMobileMenu?.()}catch{}
+  try{closeManageMenu?.()}catch{}
 
-  const isManager=(state?.personal?.employee?.position==='Управляющий'||state?.employee?.position==='Управляющий');
-  if(isManager && typeof umtab!=='undefined'){
-    if(umtab==='home')return;
-    transitionToSection(()=>{umtab='home';renderUnifiedManager()});
+  const managerEmployee =
+    state?.personal?.employee ||
+    state?.employee ||
+    null;
+
+  const isUnifiedManager =
+    managerEmployee?.position==='Управляющий' ||
+    (typeof umtab!=='undefined' && state?.personal?.employee);
+
+  if(isUnifiedManager && typeof renderUnifiedManager==='function'){
+    if(typeof umtab!=='undefined')umtab='home';
+    const app=$('#app');
+    if(app){
+      app.classList.remove('section-leaving','section-entering');
+      transitionToSection(()=>renderUnifiedManager());
+    }else{
+      renderUnifiedManager();
+    }
     return;
   }
 
-  if(state?.employee && typeof etab!=='undefined'){
-    if(etab==='home')return;
-    transitionToSection(()=>{etab='home';renderEmp()});
-    return;
+  if(state?.employee && typeof renderEmp==='function'){
+    if(typeof etab!=='undefined')etab='home';
+    const app=$('#app');
+    if(app){
+      app.classList.remove('section-leaving','section-entering');
+      transitionToSection(()=>renderEmp());
+    }else{
+      renderEmp();
+    }
   }
-
-  // Before PIN authorization the logo remains visually unchanged and does not bypass login.
 }
 
 function openMobileMenu(){
