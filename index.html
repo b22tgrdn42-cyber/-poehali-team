@@ -860,7 +860,8 @@ label{
   backdrop-filter:blur(18px);
 }
 .manage-menu:hover .manage-dropdown,
-.manage-menu:focus-within .manage-dropdown{
+.manage-menu:focus-within .manage-dropdown,
+.manage-menu.open .manage-dropdown{
   opacity:1;
   transform:none;
   pointer-events:auto;
@@ -1438,6 +1439,31 @@ async function unifiedManager(){
     renderUnifiedManager()
   }catch(e){toast(e.message);logout()}
 }
+
+function toggleManageMenu(ev){
+  ev?.stopPropagation();
+  const menu=document.querySelector('.manage-menu');
+  if(!menu)return;
+  const open=!menu.classList.contains('open');
+  document.querySelectorAll('.manage-menu.open').forEach(x=>x.classList.remove('open'));
+  menu.classList.toggle('open',open);
+  const btn=menu.querySelector('.manage-trigger');
+  if(btn)btn.setAttribute('aria-expanded',open?'true':'false');
+}
+function closeManageMenu(){
+  document.querySelectorAll('.manage-menu.open').forEach(menu=>{
+    menu.classList.remove('open');
+    const btn=menu.querySelector('.manage-trigger');
+    if(btn)btn.setAttribute('aria-expanded','false');
+  });
+}
+document.addEventListener('click',ev=>{
+  if(!ev.target.closest('.manage-menu'))closeManageMenu();
+});
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape')closeManageMenu();
+});
+
 function renderUnifiedManager(){
   const p=state.personal, e=p.employee;
   const mainTabs=[
@@ -1489,10 +1515,10 @@ function renderUnifiedManager(){
   if(!content[umtab])umtab='home';
   const isAdminTab=adminTabs.some(x=>x[0]===umtab);
   $('#app').innerHTML=`<div class=manager-nav-wrap>
-    <div class=tabs>${mainTabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>
+    <div class=tabs>${mainTabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="closeManageMenu();umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>
     <div class=manage-menu>
-      <button class="manage-trigger ${isAdminTab?'active':''}" type=button>Управление ▾</button>
-      <div class=manage-dropdown>${adminTabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>
+      <button class="manage-trigger ${isAdminTab?'active':''}" type=button aria-expanded="false" onclick="toggleManageMenu(event)">Управление ▾</button>
+      <div class=manage-dropdown onclick="event.stopPropagation()">${adminTabs.map(x=>`<button class="${umtab===x[0]?'active':''}" onclick="closeManageMenu();umtab='${x[0]}';renderUnifiedManager()">${x[1]}</button>`).join('')}</div>
     </div>
   </div>${content[umtab]}`;
   animateSection();applyBlockVisibility(document);applyRemovedElements(document);
