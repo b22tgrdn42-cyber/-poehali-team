@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.0.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.0.4';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1264,7 +1264,7 @@ function empAdmin(){return `<div class=card>
 <p class=muted style="margin-top:0">Создание, редактирование карточек, доступы, роли, PIN-коды и участие в рейтинге.</p>
 <div class=grid3>
   <input id=en class=field placeholder="Имя сотрудника">
-  <select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option></select>
+  <select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option></select><label>Пол<select id=egender class=field><option value=male>Мужской</option><option value=female>Женский</option></select></label>
   <input id=epin class=field placeholder="Индивидуальный PIN">
   <label>Дата рождения<input id=ebday class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ"><small class=date-help>Например: 25031990 → 25.03.1990</small></label>
 </div>
@@ -1357,8 +1357,12 @@ async function saveEmployeeCard(id,active){
  };
  const pin=$('#p'+id).value.trim();
  if(pin)payload.pin=pin;
- await api('admin/employees',{method:'PUT',body:JSON.stringify(payload)});
- toast('Карточка сотрудника сохранена');
+ const saved=await api('admin/employees',{method:'PUT',body:JSON.stringify(payload)});
+ if(saved?.employee){
+   const idx=state.employees?.findIndex(x=>x.id===id);
+   if(idx>=0)state.employees[idx]={...state.employees[idx],...saved.employee};
+ }
+ toast(`Карточка сохранена · пол: ${saved?.employee?.gender==='female'?'Женский':'Мужской'}`);
  await manager();
 }
 async function toggleEmployeeActive(id,active){

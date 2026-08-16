@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.0.3';
+const APP_VERSION = '9.0.4';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -652,9 +652,9 @@ module.exports=async(req,res)=>{
       if(out.competition)out.competition.tasks=await sql`SELECT * FROM competition_tasks WHERE competition_id=${out.competition.id} AND archived_at IS NULL ORDER BY id DESC`;
     }
     if(p.can_manage_permissions){
-      out.employees=await sql`SELECT id,name,position,active,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE archived_at IS NULL ORDER BY active DESC,name`;
+      out.employees=await sql`SELECT id,name,position,gender,active,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE archived_at IS NULL ORDER BY active DESC,name`;
     }else{
-      out.employees=await sql`SELECT id,name,position,active FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
+      out.employees=await sql`SELECT id,name,position,gender,active FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
     }
     return ok(res,out)
   }
@@ -716,7 +716,7 @@ module.exports=async(req,res)=>{
   }
 
   if(req.method==='GET'&&path==='team'&&(u.role==='employee'||u.role==='supervisor')){
-    const rows=await sql`SELECT id,name,position,photo,birthday FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
+    const rows=await sql`SELECT id,name,position,photo,birthday,gender FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`;
     return ok(res,rows)
   }
   if(req.method==='GET'&&path==='me'&&((u.role==='employee'||u.role==='supervisor')||u.role==='supervisor')){const e=(await sql`SELECT id,name,position,birthday,points,photo,active,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees WHERE id=${u.id}`)[0]; const news=await sql`SELECT n.*, (r.employee_id IS NOT NULL) acknowledged FROM news n LEFT JOIN news_reads r ON r.news_id=n.id AND r.employee_id=${u.id} WHERE n.active=true ORDER BY n.pinned DESC,n.created_at DESC`; const tasks=await sql`SELECT * FROM tasks WHERE active=true ORDER BY id DESC`; const prizes=await sql`SELECT * FROM prizes WHERE active=true ORDER BY cost`; const ranking=await sql`SELECT id,name,position,points,photo FROM employees WHERE active=true AND team_member=true ORDER BY points DESC,name LIMIT 50`; const ach=await sql`SELECT a.* FROM achievements a JOIN employee_achievements ea ON ea.achievement_id=a.id WHERE ea.employee_id=${u.id}`; const hist=await sql`SELECT * FROM history WHERE employee_id=${u.id} ORDER BY created_at DESC LIMIT 100`;
@@ -728,7 +728,7 @@ module.exports=async(req,res)=>{
   if(req.method==='POST'&&path==='news/ack'&&u.role==='employee'){const b=await body(req); await sql`INSERT INTO news_reads(news_id,employee_id) VALUES(${b.news_id},${u.id}) ON CONFLICT DO NOTHING`; return ok(res,{ok:true})}
 
   if(req.method==='GET'&&path==='supervisor/state'&&(u.role==='supervisor'||(u.role==='manager'||employeeManager))){
-    const employees=await sql`SELECT id,name,position,points,photo,active,team_member,access_role,messenger_access,last_seen FROM employees WHERE active=true ORDER BY team_member DESC,points DESC,name`;
+    const employees=await sql`SELECT id,name,position,gender,points,photo,active,team_member,access_role,messenger_access,last_seen FROM employees WHERE active=true ORDER BY team_member DESC,points DESC,name`;
     const achievements=await sql`SELECT ea.employee_id,a.title,a.icon,a.description,ea.created_at FROM employee_achievements ea JOIN achievements a ON a.id=ea.achievement_id ORDER BY ea.created_at DESC`;
     const pending=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.status IN ('assigned','submitted') ORDER BY it.status DESC,it.due_date NULLS LAST`;
     const comp=(await sql`SELECT * FROM competitions WHERE active=true ORDER BY id DESC LIMIT 1`)[0]||null;
@@ -910,11 +910,11 @@ module.exports=async(req,res)=>{
     return ok(res,{ok:true})
   }
 
-if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,birthday,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n WHERE n.archived_at IS NULL ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
+if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,birthday,gender,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n WHERE n.archived_at IS NULL ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} AND archived_at IS NULL ORDER BY id`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.archived_at IS NULL AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; competition={...comp,tasks:ct,board};}
  const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id WHERE it.archived_at IS NULL ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
  return ok(res,{employees,tasks,prizes,achievements,news,history,settings:settings[0],competition,individualTasks})}
-  if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,birthday,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${b.birthday||null},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;await logAction(u.id,'employee.create','employee',r[0].id,{name:b.name,position:b.position});return ok(res,r[0])}
+  if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,birthday,gender,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${b.birthday||null},${b.gender==='female'?'female':'male'},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;await logAction(u.id,'employee.create','employee',r[0].id,{name:b.name,position:b.position});return ok(res,r[0])}
   if(req.method==='PUT'&&path==='admin/employees'){
     const existing=(await sql`SELECT * FROM employees WHERE id=${b.id}`)[0];
     if(!existing)return ok(res,{error:'Сотрудник не найден'},404);
@@ -923,6 +923,7 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       name=${b.name||existing.name},
       position=${b.position||existing.position},
       birthday=${b.birthday||null},
+      gender=${b.gender==='female'?'female':'male'},
       active=${b.active!==false},
       access_role=${b.access_role||existing.access_role||'employee'},
       team_member=${b.team_member!==false},
@@ -936,8 +937,12 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
       can_manage_achievements=${!!b.can_manage_achievements},
       can_manage_permissions=${!!b.can_manage_permissions}
       WHERE id=${b.id}`;
-    await logAction(u.id,'employee.update','employee',b.id,{name:b.name,position:b.position});
-    return ok(res,{ok:true})
+    const saved=(await sql`SELECT id,name,position,birthday,gender,active,access_role,team_member,messenger_access,
+      can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,
+      can_manage_prizes,can_manage_achievements,can_manage_permissions
+      FROM employees WHERE id=${b.id}`)[0];
+    await logAction(u.id,'employee.update','employee',b.id,{name:b.name,position:b.position,gender:saved.gender});
+    return ok(res,{ok:true,employee:saved})
   }
   if(req.method==='DELETE'&&path==='admin/employees'){await sql`UPDATE employees SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','employee',b.id,{});return ok(res,{ok:true,archived:true})}
   if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;await logAction(u.id,'points.change','employee',b.employee_id,{delta:Number(b.delta)||0,reason:b.reason||''});return ok(res,{ok:true})}
