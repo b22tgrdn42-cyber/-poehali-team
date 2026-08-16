@@ -1641,12 +1641,17 @@ textarea.field{
   max-width:none;
   pointer-events:none;
   user-select:none;
+  object-fit:unset;
+  filter:none!important;
+  opacity:1!important;
+  mix-blend-mode:normal!important;
+  image-rendering:auto;
 }
 .crop-mask{
   position:absolute;
   inset:0;
   pointer-events:none;
-  box-shadow:inset 0 0 0 9999px rgba(0,0,0,.24);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);
   border:3px solid rgba(255,255,255,.92);
   border-radius:22px;
 }
@@ -2467,31 +2472,69 @@ function updateCropTransform(){
 
 async function applyCrop(){
   const img=$('#cropImage'),stage=$('#cropStage');
-  if(!img||!stage||!img.naturalWidth)return;
-  const output=1024;
-  const canvas=document.createElement('canvas');
-  canvas.width=output;canvas.height=output;
-  const ctx=canvas.getContext('2d');
-  const totalScale=cropState.baseScale*cropState.scale;
-  const displayedW=img.naturalWidth*totalScale;
-  const displayedH=img.naturalHeight*totalScale;
-  const stageW=stage.clientWidth,stageH=stage.clientHeight;
-  const left=(stageW-displayedW)/2+cropState.x;
-  const top=(stageH-displayedH)/2+cropState.y;
-  const sx=(0-left)/totalScale;
-  const sy=(0-top)/totalScale;
-  const sSize=stageW/totalScale;
-  ctx.drawImage(img,sx,sy,sSize,sSize,0,0,output,output);
-
-  let quality=.9;
-  let data=canvas.toDataURL('image/jpeg',quality);
-  while(data.length>2.4*1024*1024 && quality>.65){
-    quality-=.05;
-    data=canvas.toDataURL('image/jpeg',quality);
+  if(!img||!stage||!img.naturalWidth||!img.naturalHeight){
+    return toast('Не удалось прочитать фотографию');
   }
-  await saveCroppedProfilePhoto(data);
-  closeCropper();
-  if(cropState.fileInput)cropState.fileInput.value='';
+
+  try{
+    const stageW=stage.clientWidth;
+    const stageH=stage.clientHeight;
+    const totalScale=(cropState.baseScale||1)*(cropState.scale||1);
+
+    const displayedW=img.naturalWidth*totalScale;
+    const displayedH=img.naturalHeight*totalScale;
+
+    // Actual image position inside the square crop viewport.
+    const left=(stageW-displayedW)/2+(cropState.x||0);
+    const top=(stageH-displayedH)/2+(cropState.y||0);
+
+    // Convert viewport coordinates back to original image pixels.
+    let sx=(-left)/totalScale;
+    let sy=(-top)/totalScale;
+    let sw=stageW/totalScale;
+    let sh=stageH/totalScale;
+
+    // Hard clamp to the real image bounds. This prevents empty/black canvas areas.
+    sw=Math.min(sw,img.naturalWidth);
+    sh=Math.min(sh,img.naturalHeight);
+    sx=Math.max(0,Math.min(img.naturalWidth-sw,sx));
+    sy=Math.max(0,Math.min(img.naturalHeight-sh,sy));
+
+    const output=768;
+    const canvas=document.createElement('canvas');
+    canvas.width=output;
+    canvas.height=output;
+    const ctx=canvas.getContext('2d',{alpha:false});
+    if(!ctx)throw new Error('Canvas недоступен');
+
+    // JPEG has no alpha; paint a real background first.
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,output,output);
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality='high';
+    ctx.drawImage(img,sx,sy,sw,sh,0,0,output,output);
+
+    const blob=await new Promise((resolve,reject)=>{
+      canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось подготовить JPEG')),'image/jpeg',0.88);
+    });
+
+    if(blob.size<5000)throw new Error('Получилось пустое изображение. Попробуйте выбрать фото ещё раз.');
+    if(blob.size>3*1024*1024)throw new Error('Фото после обработки получилось слишком большим.');
+
+    const data=await new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(reader.result);
+      reader.onerror=()=>reject(new Error('Не удалось прочитать обработанное фото'));
+      reader.readAsDataURL(blob);
+    });
+
+    await saveCroppedProfilePhoto(data);
+    closeCropper();
+    if(cropState.fileInput)cropState.fileInput.value='';
+  }catch(e){
+    console.error('crop error',e);
+    toast(e.message||'Не удалось обработать фото');
+  }
 }
 
 async function saveCroppedProfilePhoto(data){
