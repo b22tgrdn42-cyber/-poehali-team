@@ -673,6 +673,123 @@ textarea.field{min-height:110px;resize:vertical}
 .removed-rule code{white-space:pre-wrap;word-break:break-word;background:#f4e6cf;padding:7px;border-radius:9px}
 .ui-rule-hidden{display:none!important}
 @media(max-width:760px){.element-editor-grid,.removed-rule{grid-template-columns:1fr}}
+
+/* V8.7 modern controls */
+:root{
+  --field-bg:rgba(255,255,255,.92);
+  --field-border:#ddc59e;
+  --field-focus:#c7852d;
+  --field-shadow:0 10px 28px rgba(69,40,8,.06);
+}
+body{
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.field, select.field, input.field, textarea.field{
+  border:1px solid var(--field-border);
+  background:var(--field-bg);
+  border-radius:16px;
+  padding:14px 15px;
+  font-size:14px;
+  font-weight:650;
+  line-height:1.35;
+  box-shadow:var(--field-shadow), inset 0 1px 0 rgba(255,255,255,.8);
+}
+.field::placeholder{color:#a08e79;font-weight:600}
+.field:focus{
+  border-color:var(--field-focus);
+  box-shadow:0 0 0 4px rgba(232,179,91,.18),0 12px 30px rgba(69,40,8,.08);
+}
+select.field{
+  appearance:none;
+  background-image:
+    linear-gradient(45deg,transparent 50%,#765f48 50%),
+    linear-gradient(135deg,#765f48 50%,transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size:6px 6px,6px 6px;
+  background-repeat:no-repeat;
+  padding-right:42px;
+}
+input[type="checkbox"]{
+  appearance:none;
+  width:22px;height:22px;
+  border-radius:7px;
+  border:1px solid #d5b98e;
+  background:#fffaf0;
+  display:inline-grid;
+  place-content:center;
+  vertical-align:middle;
+  margin:0 7px 0 0;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9);
+  transition:.18s ease;
+}
+input[type="checkbox"]:before{
+  content:"";
+  width:10px;height:10px;
+  border-radius:3px;
+  transform:scale(0);
+  background:linear-gradient(135deg,var(--red),var(--red-2));
+  transition:.16s ease;
+}
+input[type="checkbox"]:checked{
+  border-color:var(--red);
+  background:#fff;
+  box-shadow:0 0 0 4px rgba(183,22,27,.08);
+}
+input[type="checkbox"]:checked:before{transform:scale(1)}
+label{
+  font-size:13px;
+  font-weight:750;
+  color:#5f4e3f;
+}
+.emp-edit-card{
+  border:1px solid rgba(226,198,154,.9);
+  background:linear-gradient(180deg,rgba(255,253,248,.98),rgba(255,248,235,.96));
+  border-radius:24px;
+  padding:18px;
+  margin-bottom:14px;
+  box-shadow:0 14px 34px rgba(69,40,8,.07);
+}
+.emp-edit-head{
+  display:flex;align-items:center;gap:12px;margin-bottom:14px;
+}
+.emp-edit-head .avatar{width:58px;height:58px;border-radius:18px}
+.emp-edit-meta{min-width:0;flex:1}
+.emp-edit-meta h3{margin:0 0 4px;font-size:19px}
+.emp-edit-meta small{color:var(--muted)}
+.emp-edit-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.emp-edit-actions{
+  display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;
+}
+.permission-panel{
+  margin-top:14px;
+  padding:14px;
+  border-radius:16px;
+  background:#fff4df;
+  border:1px solid #ecd1a5;
+}
+.permission-panel h4{margin:0 0 10px}
+.permission-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+.toggle-line{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 10px;
+  border-radius:12px;
+  background:#fffaf1;
+  border:1px solid #ead8ba;
+}
+@media(max-width:760px){
+  .emp-edit-grid,.permission-grid{grid-template-columns:1fr}
+  .emp-edit-actions .btn{flex:1 1 auto}
+}
 </style></head><body><header class="top" data-ui-block="global.header"><img class="logo" src="/assets/logo.png"><div class="brand"><b>КОМАНДА · ПОЕХАЛИ!</b><small>Новости, конкурсы и достижения</small></div><div style="margin-left:auto" id="who"></div></header><main class="wrap" id="app"></main><script>
 const A='/api/';let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
@@ -1126,12 +1243,117 @@ async function deleteMsg(id){if(!confirm('Удалить сообщение?'))r
 async function submitIndividual(id){await api('individual-task/submit',{method:'POST',body:JSON.stringify({id,comment:$('#ic'+id)?.value||''})});toast('Задание отправлено на проверку');employee()}
 function newsCard(n){return `<div class=listitem>${n.image?`<img class=newsimg src="${n.image}">`:''}<div><span class=pill>${esc(n.category)}</span>${n.pinned?' 📌':''}</div><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p>${n.event_date?`<b>Дата: ${new Date(n.event_date).toLocaleDateString('ru')}</b>`:''}${n.requires_ack&&!n.acknowledged?`<p><button class="btn red" onclick="ack(${n.id})">Ознакомился</button></p>`:n.requires_ack?'<p>✓ Ознакомлено</p>':''}</div>`}async function ack(id){await api('news/ack',{method:'POST',body:JSON.stringify({news_id:id})});await employee()}function savePhoto(){file64($('#pfile'),async p=>{if(!p)return;await api('me/photo',{method:'POST',body:JSON.stringify({photo:p})});toast('Фото сохранено');employee()})}
 let mtab='employees';async function manager(){try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:`<div data-ui-block="admin.employees">${empAdmin()}</div>`,tasks:`<div data-ui-block="admin.tasks">${crudList('Задания',state.tasks,'task')}</div>`,prizes:`<div data-ui-block="admin.prizes">${crudList('Призы',state.prizes,'prize')}</div>`,achievements:`<div data-ui-block="admin.achievements">${achAdmin()}</div>`,news:`<div data-ui-block="admin.news">${newsAdmin()}</div>`,competition:`<div data-ui-block="admin.competition">${competitionAdmin()}</div>`,individual:`<div data-ui-block="admin.individual">${individualAdmin()}</div>`,messengerAdmin:`<div data-ui-block="admin.messenger">${messengerAdmin()}</div>`,interface:interfaceAdmin(),history:`<div data-ui-block="admin.history"><div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div></div>`,settings:`<div class=card data-ui-block="admin.settings"><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['messengerAdmin',T('admin.tab.messenger','Мессенджер')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager');applyBlockVisibility(document);applyRemovedElements(document);if(mtab==='interface')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);if(mtab==='messengerAdmin')setTimeout(()=>loadMessengerAdmin(),30)}
-function empAdmin(){return `<div class=card><h2 style="margin-bottom:6px">Сотрудники и управляющий персонал</h2><p class="muted" style="margin-top:0">Роли, доступы, участие в рейтинге и персональные PIN-коды.</p><div class=grid3><input id=en class=field placeholder="Имя"><select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option></select><input id=epin class=field placeholder="Индивидуальный PIN"></div><div class=grid><label>Уровень доступа<select id=ear class=field><option value="employee">Сотрудник</option><option value="supervisor">Наблюдатель / руководитель</option></select></label><label style="padding-top:14px"><input id=etm type=checkbox checked> Показывать как участника команды (рейтинг, конкурс)</label><label style="padding-top:14px"><input id=ema type=checkbox> Доступ к внутреннему мессенджеру</label></div><button class="btn red" onclick="addEmp()">Добавить</button></div>${state.employees.map(e=>`<div class=card><div class=row><img class=avatar src="${e.photo||'/assets/logo.png'}"><div><b>${esc(e.name)}</b><br><small>${esc(e.position)} · ${e.active?'Активен':'Заблокирован'} · ${e.team_member?'Участник команды':'Не участвует в рейтинге'}</small><br>${e.access_role==='supervisor'?'<span class=supervisor-badge>Доступ наблюдателя</span>':''}</div><div class=score style="margin-left:auto">${e.points}</div></div><div class=grid><div><input id="d${e.id}" class=field type=number placeholder="Баллы (+/-)"><input id="r${e.id}" class=field placeholder="Причина"><button class=btn onclick="points(${e.id})">Изменить баллы</button></div><div><input id="p${e.id}" class=field placeholder="Новый PIN"><select id="ar${e.id}" class=field><option value="employee" ${e.access_role!=='supervisor'?'selected':''}>Сотрудник</option><option value="supervisor" ${e.access_role==='supervisor'?'selected':''}>Наблюдатель / руководитель</option></select><label><input id="tm${e.id}" type=checkbox ${e.team_member?'checked':''}> Участник команды</label><br><label><input id="ma${e.id}" type=checkbox ${e.messenger_access?'checked':''}> Доступ к мессенджеру</label><br><button class=btn onclick="saveEmpMeta(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active})">Сохранить роль</button> <button class=btn onclick="resetPin(${e.id},'${esc(e.name)}','${esc(e.position)}',${e.active},'${e.access_role}',${e.team_member})">Сменить PIN</button> <button class="btn ${e.active?'danger':'ok'}" onclick="toggleEmp(${e.id},'${esc(e.name)}','${esc(e.position)}',${!e.active},'${e.access_role}',${e.team_member})">${e.active?'Заблокировать':'Разблокировать'}</button> <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button></div></div></div>`).join('')}`}
+function empAdmin(){return `<div class=card>
+<h2 style="margin-bottom:6px">Сотрудники и управляющий персонал</h2>
+<p class=muted style="margin-top:0">Создание, редактирование карточек, доступы, роли, PIN-коды и участие в рейтинге.</p>
+<div class=grid3>
+  <input id=en class=field placeholder="Имя сотрудника">
+  <select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option></select>
+  <input id=epin class=field placeholder="Индивидуальный PIN">
+</div>
+<div class=grid>
+  <label>Уровень доступа<select id=ear class=field><option value="employee">Сотрудник</option><option value="supervisor">Наблюдатель / руководитель</option></select></label>
+  <div class=toggle-line><input id=etm type=checkbox checked><span>Показывать как участника команды</span></div>
+  <div class=toggle-line><input id=ema type=checkbox><span>Доступ к внутреннему мессенджеру</span></div>
+</div>
+<button class="btn red" onclick="addEmp()">Добавить сотрудника</button>
+</div>
+${state.employees.map(e=>`<div class=emp-edit-card>
+  <div class=emp-edit-head>
+    <img class=avatar src="${e.photo||'/assets/logo.png'}">
+    <div class=emp-edit-meta>
+      <h3>${esc(e.name)}</h3>
+      <small>${esc(e.position)} · ${e.active?'Активен':'Заблокирован'} · ${e.team_member?'Участник команды':'Не участвует в рейтинге'}</small>
+    </div>
+    <div class=score>${e.points}</div>
+  </div>
+
+  <div class=emp-edit-grid>
+    <label>Имя<input id="name${e.id}" class=field value="${esc(e.name)}"></label>
+    <label>Должность
+      <select id="pos${e.id}" class=field>
+        ${['Руководитель','Управляющий','Старший официант','Шеф-бармен','Официант','Бармен'].map(p=>`<option ${e.position===p?'selected':''}>${p}</option>`).join('')}
+      </select>
+    </label>
+    <label>Уровень доступа
+      <select id="ar${e.id}" class=field>
+        <option value="employee" ${e.access_role!=='supervisor'?'selected':''}>Сотрудник</option>
+        <option value="supervisor" ${e.access_role==='supervisor'?'selected':''}>Наблюдатель / руководитель</option>
+      </select>
+    </label>
+    <label>Новый PIN<input id="p${e.id}" class=field placeholder="Оставьте пустым, если не меняете"></label>
+  </div>
+
+  <div class=permission-panel>
+    <h4>Доступы и отображение</h4>
+    <div class=permission-grid>
+      <label class=toggle-line><input id="tm${e.id}" type=checkbox ${e.team_member?'checked':''}><span>Участник команды</span></label>
+      <label class=toggle-line><input id="ma${e.id}" type=checkbox ${e.messenger_access?'checked':''}><span>Доступ к мессенджеру</span></label>
+    </div>
+  </div>
+
+  <div class=permission-panel>
+    <h4>Служебные права</h4>
+    <div class=permission-grid>
+      <label class=toggle-line><input id="ptm${e.id}" type=checkbox ${e.can_manage_tasks?'checked':''}><span>Общие задания</span></label>
+      <label class=toggle-line><input id="pim${e.id}" type=checkbox ${e.can_assign_individual?'checked':''}><span>Индивидуальные задания</span></label>
+      <label class=toggle-line><input id="pnm${e.id}" type=checkbox ${e.can_manage_news?'checked':''}><span>Новости</span></label>
+      <label class=toggle-line><input id="pcm${e.id}" type=checkbox ${e.can_manage_competition?'checked':''}><span>Конкурсы</span></label>
+      <label class=toggle-line><input id="ppm${e.id}" type=checkbox ${e.can_manage_prizes?'checked':''}><span>Призы</span></label>
+      <label class=toggle-line><input id="pam${e.id}" type=checkbox ${e.can_manage_achievements?'checked':''}><span>Достижения</span></label>
+      <label class=toggle-line><input id="prm${e.id}" type=checkbox ${e.can_manage_permissions?'checked':''}><span>Выдавать права другим</span></label>
+    </div>
+  </div>
+
+  <div class=emp-edit-grid style="margin-top:14px">
+    <input id="d${e.id}" class=field type=number placeholder="Баллы (+/-)">
+    <input id="r${e.id}" class=field placeholder="Причина изменения баллов">
+  </div>
+
+  <div class=emp-edit-actions>
+    <button class="btn red" onclick="saveEmployeeCard(${e.id},${e.active})">Сохранить карточку</button>
+    <button class=btn onclick="points(${e.id})">Изменить баллы</button>
+    <button class="btn ${e.active?'danger':'ok'}" onclick="toggleEmployeeActive(${e.id},${!e.active})">${e.active?'Заблокировать':'Разблокировать'}</button>
+    <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button>
+  </div>
+</div>`).join('')}`}
 async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked,messenger_access:$('#ema').checked})});toast('Сотрудник добавлен');manager()}
 async function points(id){let delta=+$('#d'+id).value;await api('admin/points',{method:'POST',body:JSON.stringify({employee_id:id,delta,reason:$('#r'+id).value})});pointCelebration(delta);manager()}
-async function saveEmpMeta(id,name,position,active){await api('admin/employees',{method:'PUT',body:JSON.stringify({id,name,position,active,access_role:$('#ar'+id).value,team_member:$('#tm'+id).checked,messenger_access:$('#ma'+id).checked})});toast('Настройки сотрудника сохранены');manager()}
-async function resetPin(id,name,position,active,access_role,team_member,messenger_access){let p=$('#p'+id).value;if(!p)return toast('Введите новый PIN');await api('admin/employees',{method:'PUT',body:JSON.stringify({id,name,position,active,pin:p,access_role,team_member,messenger_access})});toast('PIN изменён')}
-async function toggleEmp(id,name,position,active,access_role,team_member,messenger_access){await api('admin/employees',{method:'PUT',body:JSON.stringify({id,name,position,active,access_role,team_member,messenger_access})});manager()}
+async function saveEmployeeCard(id,active){
+ const payload={
+   id,
+   name:$('#name'+id).value.trim(),
+   position:$('#pos'+id).value,
+   active,
+   access_role:$('#ar'+id).value,
+   team_member:$('#tm'+id).checked,
+   messenger_access:$('#ma'+id).checked,
+   can_manage_tasks:$('#ptm'+id).checked,
+   can_assign_individual:$('#pim'+id).checked,
+   can_manage_news:$('#pnm'+id).checked,
+   can_manage_competition:$('#pcm'+id).checked,
+   can_manage_prizes:$('#ppm'+id).checked,
+   can_manage_achievements:$('#pam'+id).checked,
+   can_manage_permissions:$('#prm'+id).checked
+ };
+ const pin=$('#p'+id).value.trim();
+ if(pin)payload.pin=pin;
+ await api('admin/employees',{method:'PUT',body:JSON.stringify(payload)});
+ toast('Карточка сотрудника сохранена');
+ await manager();
+}
+async function toggleEmployeeActive(id,active){
+ const e=state.employees.find(x=>x.id===id);if(!e)return;
+ await api('admin/employees',{method:'PUT',body:JSON.stringify({
+   id,name:e.name,position:e.position,active,
+   access_role:e.access_role,team_member:e.team_member,messenger_access:e.messenger_access,
+   can_manage_tasks:e.can_manage_tasks,can_assign_individual:e.can_assign_individual,
+   can_manage_news:e.can_manage_news,can_manage_competition:e.can_manage_competition,
+   can_manage_prizes:e.can_manage_prizes,can_manage_achievements:e.can_manage_achievements,
+   can_manage_permissions:e.can_manage_permissions
+ })});
+ await manager();
+}
 function crudList(title,arr,type){let isT=type==='task';return `<div class=card><h2>${title}</h2><input id=ct class=field placeholder="Название"><textarea id=cd class=field placeholder="Описание"></textarea><input id=cv class=field type=number placeholder="${isT?'Баллы':'Стоимость'}"><button class="btn red" onclick="createItem('${type}')">Добавить</button></div>${arr.map(x=>`<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${isT?'+'+x.points:x.cost} баллов</span> <button class="btn danger" onclick="del('${isT?'tasks':'prizes'}',${x.id})">Удалить</button></div>`).join('')}`}
 async function createItem(t){let b={title:$('#ct').value,description:$('#cd').value,active:true};b[t==='task'?'points':'cost']=+$('#cv').value;let r=await api('admin/'+(t==='task'?'tasks':'prizes'),{method:'POST',body:JSON.stringify(b)});if(t==='task'&&r.push)toast(r.push.sent>0?`Задание создано · уведомлений отправлено: ${r.push.sent}`:'Задание создано · подписанных устройств пока нет');manager()}
 function achAdmin(){return `<div class=card><h2>Достижения</h2><input id=ai class=field placeholder="Значок, например ★"><input id=at class=field placeholder="Название"><input id=ad class=field placeholder="Описание"><button class="btn red" onclick="addAch()">Добавить</button></div>${state.achievements.map(a=>`<div class=card>${esc(a.icon)} <b>${esc(a.title)}</b> — ${esc(a.description)}<div class=row><select id="ae${a.id}" class=field style="flex:1">${state.employees.map(e=>`<option value=${e.id}>${esc(e.name)}</option>`).join('')}</select><button class=btn onclick="assignAch(${a.id})">Назначить</button><button class="btn danger" onclick="del('achievements',${a.id})">Удалить</button></div></div>`).join('')}`}

@@ -573,12 +573,33 @@ module.exports=async(req,res)=>{
     if(b.key)await sql`DELETE FROM ui_texts WHERE key=${b.key}`;
     return ok(res,{ok:true})
   }
-  if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
+  if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achievements,news,history,settings]=await Promise.all([sql`SELECT id,name,position,points,active,photo,created_at,access_role,team_member,messenger_access,last_seen,can_manage_tasks,can_assign_individual,can_manage_news,can_manage_competition,can_manage_prizes,can_manage_achievements,can_manage_permissions FROM employees ORDER BY name`,sql`SELECT * FROM tasks ORDER BY id DESC`,sql`SELECT * FROM prizes ORDER BY id DESC`,sql`SELECT * FROM achievements ORDER BY id DESC`,sql`SELECT n.*, (SELECT count(*)::int FROM news_reads r WHERE r.news_id=n.id) read_count FROM news n ORDER BY pinned DESC,created_at DESC`,sql`SELECT h.*,e.name employee_name FROM history h LEFT JOIN employees e ON e.id=h.employee_id ORDER BY h.created_at DESC LIMIT 200`,sql`SELECT season,level_step FROM settings WHERE id=1`]);const comp=(await sql`SELECT * FROM competitions ORDER BY id DESC LIMIT 1`)[0]||null; let competition=null;
  if(comp){const ct=await sql`SELECT * FROM competition_tasks WHERE competition_id=${comp.id} ORDER BY id`; const board=await sql`SELECT e.id,e.name,e.photo,COALESCE(sum(cs.points),0)::int score FROM employees e LEFT JOIN competition_scores cs ON cs.employee_id=e.id AND cs.competition_id=${comp.id} WHERE e.active=true AND e.team_member=true GROUP BY e.id ORDER BY score DESC,e.name`; competition={...comp,tasks:ct,board};}
  const individualTasks=await sql`SELECT it.*,e.name employee_name FROM individual_tasks it JOIN employees e ON e.id=it.employee_id ORDER BY CASE it.status WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 ELSE 3 END,it.created_at DESC`;
  return ok(res,{employees,tasks,prizes,achievements,news,history,settings:settings[0],competition,individualTasks})}
   if(req.method==='POST'&&path==='admin/employees'){const h=await bcrypt.hash(String(b.pin),10); const r=await sql`INSERT INTO employees(name,position,pin_hash,access_role,team_member,messenger_access) VALUES(${b.name},${b.position||''},${h},${b.access_role||'employee'},${b.team_member!==false},${!!b.messenger_access}) RETURNING id`;return ok(res,r[0])}
-  if(req.method==='PUT'&&path==='admin/employees'){if(b.pin){const h=await bcrypt.hash(String(b.pin),10);await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false},messenger_access=${!!b.messenger_access},pin_hash=${h} WHERE id=${b.id}`}else await sql`UPDATE employees SET name=${b.name},position=${b.position||''},active=${b.active!==false},access_role=${b.access_role||'employee'},team_member=${b.team_member!==false},messenger_access=${!!b.messenger_access} WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='PUT'&&path==='admin/employees'){
+    const existing=(await sql`SELECT * FROM employees WHERE id=${b.id}`)[0];
+    if(!existing)return ok(res,{error:'Сотрудник не найден'},404);
+    const nextPin=b.pin?await bcrypt.hash(String(b.pin),10):existing.pin_hash;
+    await sql`UPDATE employees SET
+      name=${b.name||existing.name},
+      position=${b.position||existing.position},
+      active=${b.active!==false},
+      access_role=${b.access_role||existing.access_role||'employee'},
+      team_member=${b.team_member!==false},
+      messenger_access=${!!b.messenger_access},
+      pin_hash=${nextPin},
+      can_manage_tasks=${!!b.can_manage_tasks},
+      can_assign_individual=${!!b.can_assign_individual},
+      can_manage_news=${!!b.can_manage_news},
+      can_manage_competition=${!!b.can_manage_competition},
+      can_manage_prizes=${!!b.can_manage_prizes},
+      can_manage_achievements=${!!b.can_manage_achievements},
+      can_manage_permissions=${!!b.can_manage_permissions}
+      WHERE id=${b.id}`;
+    return ok(res,{ok:true})
+  }
   if(req.method==='DELETE'&&path==='admin/employees'){await sql`DELETE FROM employees WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/points'){await sql`UPDATE employees SET points=points+${Number(b.delta)||0} WHERE id=${b.employee_id}`;await sql`INSERT INTO history(employee_id,delta,reason) VALUES(${b.employee_id},${Number(b.delta)||0},${b.reason||''})`;return ok(res,{ok:true})}
   if(req.method==='POST'&&path==='admin/tasks'){
