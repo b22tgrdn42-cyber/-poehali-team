@@ -150,6 +150,14 @@ async function init(){
    hidden boolean default false,
    updated_at timestamptz default now()
  )`;
+
+ await sql`CREATE TABLE IF NOT EXISTS ui_removed_elements (
+   id serial primary key,
+   element_type text not null,
+   match_text text not null,
+   active boolean default true,
+   created_at timestamptz default now()
+ )`;
  const cc=await sql`SELECT id FROM competitions LIMIT 1`;
  if(!cc.length){const c=await sql`INSERT INTO competitions(title,description,active) VALUES('Гонка экипажей','Выполняйте задания, зарабатывайте баллы и поднимайтесь в рейтинге команды.',true) RETURNING id`; const cid=c[0].id;
  await sql`INSERT INTO competition_tasks(competition_id,title,description,points) VALUES
@@ -207,6 +215,9 @@ module.exports=async(req,res)=>{
   if(req.method==='GET'&&path==='content/blocks'){
     const rows=await sql`SELECT block_key,hidden FROM ui_blocks ORDER BY block_key`;
     return ok(res,Object.fromEntries(rows.map(x=>[x.block_key,x.hidden])))
+  }
+  if(req.method==='GET'&&path==='content/removed-elements'){
+    return ok(res,await sql`SELECT id,element_type,match_text FROM ui_removed_elements WHERE active=true ORDER BY id`)
   }
   if(!u) return ok(res,{error:'Требуется вход'},401);
   const b=await body(req);
@@ -418,6 +429,19 @@ module.exports=async(req,res)=>{
   if(req.method==='DELETE'&&path==='admin/content/blocks'){
     if(b.block_key)await sql`DELETE FROM ui_blocks WHERE block_key=${b.block_key}`;
     return ok(res,{ok:true})
+  }
+
+  if(req.method==='GET'&&path==='admin/content/removed-elements'){
+    return ok(res,await sql`SELECT * FROM ui_removed_elements ORDER BY id DESC`)
+  }
+  if(req.method==='POST'&&path==='admin/content/removed-elements'){
+    const type=String(b.element_type||'').trim(),txt=String(b.match_text||'').trim();
+    if(!['button','window'].includes(type)||!txt)return ok(res,{error:'Укажите тип элемента и текст'},400);
+    const r=await sql`INSERT INTO ui_removed_elements(element_type,match_text,active) VALUES(${type},${txt},true) RETURNING id`;
+    return ok(res,{ok:true,id:r[0].id})
+  }
+  if(req.method==='DELETE'&&path==='admin/content/removed-elements'){
+    await sql`DELETE FROM ui_removed_elements WHERE id=${b.id}`; return ok(res,{ok:true})
   }
   if(req.method==='GET'&&path==='admin/content'){
     const rows=await sql`SELECT key,value,updated_at FROM ui_texts ORDER BY key`;
