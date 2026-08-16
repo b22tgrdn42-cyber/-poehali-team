@@ -2255,3 +2255,39 @@ body.push-gate-open #tutorialOffer{
     backdrop-filter:none!important;
   }
 }
+
+/* V9.3.6 — push controls visible in every employee profile */
+.push-settings-card{
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:100%;
+  margin:20px 0!important;
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:linear-gradient(180deg,#fffdf8,#fff5e5);
+  box-sizing:border-box;
+}
+.push-settings-actions{
+  display:flex!important;
+  visibility:visible!important;
+}
+@media(max-width:760px){
+  .push-settings-card{
+    margin:18px 0!important;
+    padding:16px;
+    border-radius:18px;
+  }
+  .push-settings-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+  }
+  .push-settings-actions .btn{
+    display:block!important;
+    width:100%!important;
+    min-height:48px;
+    margin:0!important;
+  }
+}
