@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.0.8';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.0.9';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -93,51 +93,36 @@ async function goHomeFromLogo(){
   try{closeMobileMenu?.()}catch{}
   try{closeManageMenu?.()}catch{}
 
-  // If a user is authenticated, resolve the real employee from the server
-  // rather than relying on whatever state shape the current admin section has.
+  const managerEmployee=state?.personal?.employee||state?.employee||null;
+
+  // Fast path: current unified manager state is already loaded.
+  if(managerEmployee?.position==='Управляющий' && state?.personal && typeof renderUnifiedManager==='function'){
+    if(umtab==='home')return;
+    transitionToSection(()=>{umtab='home';renderUnifiedManager()});
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+
+  if(state?.employee && typeof renderEmp==='function'){
+    if(etab==='home')return;
+    transitionToSection(()=>{etab='home';renderEmp()});
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+
+  // Recovery path only if state became inconsistent.
   if(token && (role==='employee'||role==='supervisor')){
     try{
       const personal=await api('me');
-
       if(personal?.employee?.position==='Управляющий'){
         const admin=await api('admin/state');
-        state={...admin,personal};
-        umtab='home';
-
-        const app=$('#app');
-        if(app){
-          app.classList.remove('section-leaving','section-entering');
-          app.style.opacity='1';
-          app.style.transform='';
-          app.style.filter='';
-        }
-
+        state={...admin,personal};umtab='home';
         renderUnifiedManager();
-        window.scrollTo({top:0,behavior:'smooth'});
-        return;
+      }else{
+        state=personal;etab='home';renderEmp();
       }
-
-      // Normal employee.
-      state=personal;
-      etab='home';
-      const app=$('#app');
-      if(app){
-        app.classList.remove('section-leaving','section-entering');
-        app.style.opacity='1';
-        app.style.transform='';
-        app.style.filter='';
-      }
-      renderEmp();
-      window.scrollTo({top:0,behavior:'smooth'});
-      return;
-    }catch(e){
-      console.error('logo home navigation failed',e);
-      toast(e.message||'Не удалось открыть главную');
-      return;
-    }
+    }catch(e){toast(e.message||'Не удалось открыть главную')}
   }
-
-  // Not authorized: stay on the PIN screen.
 }
 
 function openMobileMenu(){
@@ -384,12 +369,15 @@ function animateSection(){
   const app=$('#app');if(!app)return;
   app.classList.remove('section-entering','section-leaving');
   void app.offsetWidth;
-  app.classList.add('section-entering');initSmartDates(app);
-  const cards=[...app.querySelectorAll('.card,.emp-edit-card,.section-item,.home-task,.listitem')].slice(0,18);
+  app.classList.add('section-entering');
+
+  // Animate only the first few high-level blocks. Large lists are left untouched
+  // so navigation stays smooth even on older phones.
+  const cards=[...app.querySelectorAll(':scope > .card,:scope > .section-item,.card.hero,.home-news-feed')].slice(0,8);
   cards.forEach((el,i)=>{
     el.style.animation='none';
-    el.offsetHeight;
-    el.style.animation=`cardRise .38s ${Math.min(i*28,280)}ms var(--ease-spring) both`;
+    void el.offsetWidth;
+    el.style.animation=`cardRise .24s ${Math.min(i*18,108)}ms var(--ease-spring) both`;
   });
 }
 function fireworks(kind='login',amount=42){
@@ -1123,15 +1111,40 @@ function toggleManageMenu(ev){
   if(btn)btn.setAttribute('aria-expanded',open?'true':'false');
 }
 
+function showTransitionAccent(){
+  const old=$('.section-accent-sweep');if(old)old.remove();
+  const bar=document.createElement('div');bar.className='section-accent-sweep';
+  document.body.appendChild(bar);
+  setTimeout(()=>bar.remove(),500);
+}
 function transitionToSection(callback){
+  if(typeof callback!=='function')return;
+  showTransitionAccent();
+
+  // Native View Transitions are GPU-friendly and avoid the old artificial delay.
+  if(document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    try{
+      const vt=document.startViewTransition(()=>{
+        callback();
+        requestAnimationFrame(()=>animateSection());
+      });
+      vt.finished.catch(()=>{});
+      return;
+    }catch(e){
+      console.warn('view transition fallback',e);
+    }
+  }
+
   const app=$('#app');
   if(!app){callback();return}
   app.classList.remove('section-entering');
   app.classList.add('section-leaving');
+
+  // Keep fallback below one frame-feeling threshold instead of the old 150ms pause.
   setTimeout(()=>{
     callback();
     requestAnimationFrame(()=>animateSection());
-  },150);
+  },70);
 }
 
 function closeManageMenu(){
