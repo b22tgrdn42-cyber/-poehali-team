@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.2.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.2.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -481,33 +481,58 @@ function tutorialSectionKey(step){
   return step.section||'home';
 }
 function navigateForTutorial(step){
-  if(!step?.section)return;
-  const e=tutorialEmployee();
-  if(e?.position==='Управляющий' && typeof renderUnifiedManager==='function'){
-    const target=tutorialSectionKey(step);
-    if(typeof umtab!=='undefined' && umtab!==target){
-      umtab=target;
-      renderUnifiedManager();
-    }
-  }else if(typeof renderEmp==='function'){
-    const target=tutorialSectionKey(step);
-    if(typeof etab!=='undefined' && etab!==target){
-      etab=target;renderEmp();
-    }
-  }
+  // V9.2.3: tutorial is intentionally passive.
+  // It must never change tabs, open sections, trigger buttons or mutate navigation state.
+  return;
 }
 function spotlightTutorialTarget(step){
   clearTutorialSpotlight();
+
+  const e=tutorialEmployee();
+  const manager=e?.position==='Управляющий';
+  const section=step?.section||'';
+  let label='';
+
+  const labels={
+    home:'Главная',
+    team:'Команда',
+    news:'Новости',
+    tasks:'Задания',
+    prizes:'Призы',
+    messenger:'Чаты',
+    competition:'Конкурс',
+    rating:'Рейтинг',
+    profile:'Профиль'
+  };
+  label=labels[section]||'';
+
   let target=null;
-  if(step.quick){
+
+  // Desktop: highlight only a tab already visible in the top navigation.
+  if(label){
+    const candidates=[...document.querySelectorAll('.tabs button')];
+    target=candidates.find(btn=>btn.textContent.trim()===label)||null;
+  }
+
+  // Permission tutorial: highlight "+" only if it is already visible in the current section.
+  // Never navigate to reveal it.
+  if(!target && step?.quick){
     target=document.querySelector(`[onclick*="openQuickCreate('${step.quick}')"]`);
   }
-  if(!target && step.section){
-    target=document.querySelector('.section-title-row') || document.querySelector('#app > .card') || document.querySelector('#app');
+
+  // Manager-specific training can highlight the "Управление" trigger,
+  // but never opens the dropdown automatically.
+  if(!target && manager && /управ|прав|админист/i.test((step?.title||'')+' '+(step?.text||''))){
+    target=document.querySelector('.manage-trigger');
   }
+
+  // Mobile: if the corresponding top tab is not visible, highlight the hamburger only.
+  if(!target && window.matchMedia('(max-width:760px)').matches){
+    target=document.querySelector('.mobile-menu-toggle');
+  }
+
   if(target && target.getBoundingClientRect().width>0){
     target.classList.add('tutorial-highlight');
-    try{target.scrollIntoView({behavior:'smooth',block:'center'})}catch{}
   }
 }
 function renderTutorialStep(){
@@ -522,7 +547,7 @@ function renderTutorialStep(){
   const currentIndex=tutorialState.index;
   const step=tutorialState.steps[currentIndex];
   if(!step){finishTutorial();return}
-  navigateForTutorial(step);
+  // Passive tutorial: keep the employee on the current screen.
   requestAnimationFrame(()=>{
     const activeOverlay=$('#tutorialOverlay');
     if(activeOverlay && activeOverlay.parentElement===document.body){

@@ -2113,3 +2113,27 @@ body.tutorial-open .tutorial-highlight{
   outline:4px solid rgba(232,179,91,.92)!important;
   outline-offset:5px!important;
 }
+
+/* V9.2.3 — passive tutorial highlighting */
+body.tutorial-open .tabs button.tutorial-highlight,
+body.tutorial-open .manage-trigger.tutorial-highlight,
+body.tutorial-open .mobile-menu-toggle.tutorial-highlight,
+body.tutorial-open .quick-create-btn.tutorial-highlight{
+  position:relative!important;
+  z-index:23001!important;
+  outline:3px solid #e8b35b!important;
+  outline-offset:4px!important;
+  box-shadow:0 0 0 5px rgba(232,179,91,.18),0 10px 28px rgba(183,22,27,.22)!important;
+  animation:tutorialNavPulse 1s ease-in-out infinite alternate!important;
+}
+@keyframes tutorialNavPulse{
+  from{transform:scale(1)}
+  to{transform:scale(1.045)}
+}
+
+/* Tutorial must not disable or replace the currently open section. */
+body.tutorial-open #app{
+  opacity:1!important;
+  filter:none!important;
+  transform:none!important;
+}
