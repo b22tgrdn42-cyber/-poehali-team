@@ -2173,3 +2173,63 @@ body.push-gate-open #tutorialOffer{
     grid-template-columns:1fr;
   }
 }
+
+/* V9.3.1 performance optimizations */
+#app{
+  contain:layout style;
+}
+@media(max-width:760px){
+  .mandatory-push-gate,
+  .tutorial-offer,
+  .tutorial-overlay,
+  .crop-modal{
+    backdrop-filter:none!important;
+  }
+  .card,
+  .emp-edit-card,
+  .chat-main,
+  .chat-sidebar{
+    box-shadow:0 7px 20px rgba(0,0,0,.07)!important;
+  }
+}
+
+/* V9.3.2 — push controls in every employee profile */
+.push-settings-card{
+  margin-top:18px!important;
+  text-align:left;
+}
+.push-settings-details{
+  padding:12px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.62);
+  border:1px solid var(--line);
+  line-height:1.5;
+  margin:12px 0;
+}
+.push-settings-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+}
+.push-settings-actions .btn{
+  flex:1 1 160px;
+}
+.push-ok{
+  background:#e6f5eb!important;
+  color:#126b37!important;
+  border-color:rgba(18,107,55,.18)!important;
+}
+.push-bad{
+  background:#fff0ed!important;
+  color:#a5161b!important;
+  border-color:rgba(165,22,27,.18)!important;
+}
+@media(max-width:760px){
+  .push-settings-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .push-settings-actions .btn{
+    width:100%;
+  }
+}

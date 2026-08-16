@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.3.0';
+const APP_VERSION = '9.3.2';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@komanda-poehali.local',VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);
@@ -473,6 +473,7 @@ module.exports=async(req,res)=>{
     await sql`INSERT INTO push_subscriptions(employee_id,endpoint,p256dh,auth)
       VALUES(${u.id},${s.endpoint},${s.keys.p256dh},${s.keys.auth})
       ON CONFLICT(endpoint) DO UPDATE SET employee_id=${u.id},p256dh=${s.keys.p256dh},auth=${s.keys.auth}`;
+    await logAction(u.id,'push.subscribe','push_subscription',null,{endpoint:s.endpoint.slice(0,80)});
     return ok(res,{ok:true})
   }
   if(req.method==='POST'&&path==='push/unsubscribe'&&(u.role==='employee'||u.role==='supervisor')){
@@ -481,7 +482,12 @@ module.exports=async(req,res)=>{
 
   if(req.method==='GET'&&path==='push/status'&&(u.role==='employee'||u.role==='supervisor')){
     const rows=await sql`SELECT count(*)::int count FROM push_subscriptions WHERE employee_id=${u.id}`;
-    return ok(res,{configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),subscriptions:rows[0]?.count||0})
+    return ok(res,{
+      configured:!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY),
+      public_key:!!VAPID_PUBLIC_KEY,
+      private_key:!!VAPID_PRIVATE_KEY,
+      subscriptions:rows[0]?.count||0
+    })
   }
   if(req.method==='POST'&&path==='push/test'&&(u.role==='employee'||u.role==='supervisor')){
     const result=await sendPushToEmployee(u.id,{
