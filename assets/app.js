@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.3.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.3.4';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1154,8 +1154,18 @@ function restoreTabsScroll(kind){
   const value=kind==='manager'?managerTabsScroll:employeeTabsScroll;
   requestAnimationFrame(()=>{const t=document.querySelector('.tabs');if(t)t.scrollLeft=value});
 }
+
+function optimizeRenderedImages(root=document){
+  root.querySelectorAll?.('img').forEach(img=>{
+    if(!img.hasAttribute('loading') && !img.classList.contains('welcome-logo') && !img.classList.contains('auth-logo')){
+      img.loading='lazy';
+    }
+    img.decoding='async';
+  });
+}
+
 function animateSection(){
-  const app=$('#app');if(!app)return;
+  const app=$('#app');if(!app)return;optimizeRenderedImages(app);
   app.classList.remove('section-entering','section-leaving');
   void app.offsetWidth;
   app.classList.add('section-entering');
@@ -1220,6 +1230,32 @@ async function api(path,opt={}){
   }
   return j
 }
+const PUBLIC_EMPLOYEE_CACHE_MS=60000;
+function readPublicEmployeeCache(){
+  try{
+    const raw=sessionStorage.getItem('poehali:public-employees');
+    if(!raw)return null;
+    const item=JSON.parse(raw);
+    if(!item||Date.now()-item.time>PUBLIC_EMPLOYEE_CACHE_MS)return null;
+    return item.value;
+  }catch{return null}
+}
+function writePublicEmployeeCache(value){
+  try{
+    sessionStorage.setItem('poehali:public-employees',JSON.stringify({
+      time:Date.now(),
+      value
+    }));
+  }catch{}
+}
+async function getPublicEmployeesFast(){
+  const cached=readPublicEmployeeCache();
+  if(cached)return cached;
+  const value=await api('public/employees');
+  writePublicEmployeeCache(value);
+  return value;
+}
+
 const FAST_CACHE_TTL=60000;
 function fastCacheGet(key,ttl=FAST_CACHE_TTL){
   try{
@@ -1746,11 +1782,14 @@ async function continueAfterMandatoryPush(){
 async function showEmployeeWelcome(){
  let employeeName='';
  try{
-   const cached=fastCacheGet('public/employees',60000)||[];
-   employeeName=cached.find(x=>x.id===Number(selectedEmployeeId))?.name||'';
+   const cached=readPublicEmployeeCache()||[];
+   employeeName=cached.find(x=>Number(x.id)===Number(selectedEmployeeId))?.name||'';
  }catch{}
  employeeName=employeeName||state?.employee?.name||'команду';
- const layer=document.createElement('div');layer.className='welcome-stage';layer.id='welcomeStage';
+
+ const layer=document.createElement('div');
+ layer.className='welcome-stage';
+ layer.id='welcomeStage';
  layer.innerHTML=`<div class=welcome-card>
    <img class=welcome-logo src="/assets/logo.png">
    <div class=auth-kicker>КОМАНДА · ПОЕХАЛИ!</div>
@@ -1758,14 +1797,17 @@ async function showEmployeeWelcome(){
    <p class=welcome-copy>${esc(employeeName)}, хорошей смены и отличных результатов 🚀</p>
  </div>`;
  document.body.appendChild(layer);
- fireworks('login',24);
+ initSmartDates(layer);
+ fireworks('login',42);
+
+ // Обязательные 2 секунды полного показа при КАЖДОМ входе.
  setTimeout(()=>{
    layer.classList.add('welcome-out');
    setTimeout(()=>{
      layer.remove();
      if(role==='supervisor')supervisor();else employee();
-   },180);
- },360);
+   },260);
+ },2000);
 }
 
 async function empLogin(){

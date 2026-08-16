@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.3.3';
+const APP_VERSION = '9.3.4';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   

@@ -2233,3 +2233,25 @@ body.push-gate-open #tutorialOffer{
     width:100%;
   }
 }
+
+/* V9.3.4 — safe performance optimizations */
+.listitem,
+.section-item,
+.emp-edit-card{
+  content-visibility:auto;
+  contain-intrinsic-size:1px 140px;
+}
+.newsimg,
+.section-item-image,
+.team-profile-photo{
+  image-rendering:auto;
+}
+@media(max-width:760px){
+  .mandatory-push-gate,
+  .tutorial-offer,
+  .tutorial-overlay,
+  .crop-modal{
+    -webkit-backdrop-filter:none!important;
+    backdrop-filter:none!important;
+  }
+}
