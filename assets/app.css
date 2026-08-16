@@ -1970,3 +1970,114 @@ body.push-gate-open{
     height:78px;
   }
 }
+
+/* V9.2 adaptive onboarding */
+body.tutorial-open{overflow:hidden!important}
+.tutorial-offer,
+.tutorial-overlay{
+  position:fixed;
+  inset:0;
+  z-index:23000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(27,19,13,.68);
+  backdrop-filter:blur(10px);
+}
+.tutorial-offer.open,
+.tutorial-overlay.open{display:flex}
+.tutorial-offer-card,
+.tutorial-card{
+  width:min(560px,100%);
+  border-radius:28px;
+  padding:28px;
+  background:
+    radial-gradient(circle at 85% 5%,rgba(183,22,27,.12),transparent 34%),
+    linear-gradient(180deg,#fffaf0,#f6e5c5);
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:0 32px 100px rgba(0,0,0,.34);
+  animation:sectionIn .3s var(--ease-spring) both;
+  position:relative;
+  z-index:23002;
+}
+.tutorial-icon{
+  font-size:42px;
+  line-height:1;
+  margin-bottom:12px;
+}
+.tutorial-card h2,
+.tutorial-offer-card h2{margin-bottom:10px!important}
+.tutorial-card p,
+.tutorial-offer-card p{font-size:15px;line-height:1.62}
+.tutorial-actions{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-top:20px;
+}
+.tutorial-actions .btn:last-child{margin-left:auto}
+.tutorial-progress{
+  height:5px;
+  border-radius:999px;
+  background:rgba(143,16,21,.10);
+  overflow:hidden;
+  margin-bottom:9px;
+}
+.tutorial-progress span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,var(--red),#e8b35b);
+  transition:width .28s var(--ease-spring);
+}
+.tutorial-step-count{
+  font-size:11px;
+  color:var(--muted);
+  font-weight:800;
+  letter-spacing:.05em;
+  margin-bottom:14px;
+}
+.tutorial-hint{
+  padding:11px 13px;
+  border-radius:13px;
+  background:rgba(255,255,255,.66);
+  border:1px solid var(--line);
+  font-size:12px;
+  color:var(--muted);
+}
+.tutorial-highlight{
+  position:relative!important;
+  z-index:23001!important;
+  outline:4px solid rgba(232,179,91,.92)!important;
+  outline-offset:5px!important;
+  box-shadow:0 0 0 9999px rgba(26,19,14,.32),0 0 34px rgba(232,179,91,.45)!important;
+  border-radius:18px!important;
+  animation:tutorialPulse 1.25s ease-in-out infinite alternate!important;
+}
+@keyframes tutorialPulse{
+  from{outline-color:rgba(232,179,91,.68)}
+  to{outline-color:rgba(183,22,27,.9)}
+}
+@media(max-width:760px){
+  .tutorial-offer,.tutorial-overlay{
+    align-items:flex-end;
+    padding:12px;
+  }
+  .tutorial-offer-card,.tutorial-card{
+    width:100%;
+    border-radius:24px;
+    padding:21px 18px 18px;
+  }
+  .tutorial-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .tutorial-actions .btn{
+    width:100%;
+  }
+  .tutorial-actions .btn:last-child{
+    margin-left:0;
+    grid-column:1/-1;
+  }
+}

@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.1.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.2.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -269,6 +269,364 @@ function employeeGenderLabel(employee){
   return '';
 }
 
+
+
+const TUTORIAL_SCHEMA_VERSION='2';
+
+let tutorialEvaluationTimer=null;
+function scheduleTutorialEvaluation(){
+  clearTimeout(tutorialEvaluationTimer);
+  tutorialEvaluationTimer=setTimeout(()=>evaluateTutorialForCurrentUser(),650);
+}
+
+
+function tutorialEmployee(){
+  return state?.personal?.employee||state?.employee||null;
+}
+function tutorialStorageKey(employeeId,suffix){
+  return `poehali:tutorial:${TUTORIAL_SCHEMA_VERSION}:${employeeId}:${suffix}`;
+}
+function employeeCapabilityMap(e=tutorialEmployee()){
+  if(!e)return {};
+  const manager=e.position==='Управляющий';
+  return {
+    messenger:!!e.messenger_access,
+    staff_panel:!!(manager||hasStaffRights?.(e)),
+    news_create:!!(manager||e.can_manage_news),
+    general_tasks_create:!!(manager||e.can_manage_tasks),
+    individual_tasks_create:!!(manager||e.can_assign_individual),
+    prizes_create:!!(manager||e.can_manage_prizes),
+    competition_manage:!!(manager||e.can_manage_competition),
+    achievements_manage:!!(manager||e.can_manage_achievements),
+    permissions_manage:!!(manager||e.can_manage_permissions),
+    manager_full:manager
+  };
+}
+function storedCapabilityMap(employeeId){
+  try{return JSON.parse(localStorage.getItem(tutorialStorageKey(employeeId,'capabilities'))||'{}')}catch{return {}}
+}
+function storeCapabilityMap(employeeId,map){
+  localStorage.setItem(tutorialStorageKey(employeeId,'capabilities'),JSON.stringify(map||{}));
+}
+function tutorialSeen(employeeId){
+  return localStorage.getItem(tutorialStorageKey(employeeId,'base-complete'))==='1';
+}
+function markTutorialSeen(employeeId){
+  localStorage.setItem(tutorialStorageKey(employeeId,'base-complete'),'1');
+}
+function newlyGrantedCapabilities(employeeId,current){
+  const previous=storedCapabilityMap(employeeId);
+  return Object.keys(current).filter(k=>current[k]===true && previous[k]!==true);
+}
+function capabilityLabel(key){
+  return ({
+    messenger:'Чаты',
+    staff_panel:'Панель управления',
+    news_create:'Создание новостей',
+    general_tasks_create:'Создание общих заданий',
+    individual_tasks_create:'Создание индивидуальных заданий',
+    prizes_create:'Создание призов',
+    competition_manage:'Управление конкурсами',
+    achievements_manage:'Управление достижениями',
+    permissions_manage:'Выдача прав сотрудникам',
+    manager_full:'Полный кабинет управляющего'
+  })[key]||key;
+}
+function baseTutorialSteps(e){
+  const steps=[
+    {
+      icon:'👋',title:`Добро пожаловать, ${e.name}!`,
+      text:'Это внутренняя платформа команды. Здесь собраны новости, задания, достижения, конкурсы, призы и общение с коллегами.',
+      hint:'Обучение занимает около двух минут. Его можно закрыть в любой момент.'
+    },
+    {
+      icon:'🏠',title:'Главная',
+      text:'На главной находятся свежие новости и ваши актуальные индивидуальные задания. Нажатие на логотип в левом верхнем углу возвращает сюда из любого раздела.',
+      section:'home'
+    },
+    {
+      icon:'📰',title:'Новости',
+      text:'Здесь публикуется важная информация команды. Если новость требует подтверждения, отметьте, что вы ознакомились.',
+      section:'news'
+    },
+    {
+      icon:'✅',title:'Задания',
+      text:'В разделе видны общие задания команды и ваши личные задания. За выполнение можно получать баллы.',
+      section:'tasks'
+    },
+    {
+      icon:'🎁',title:'Призы и рейтинг',
+      text:'Баллы можно использовать для призов, а рейтинг показывает текущие результаты команды.',
+      section:'prizes'
+    },
+    {
+      icon:'👥',title:'Команда',
+      text:'В разделе «Команда» можно посмотреть коллег, их фотографии, должности и дни рождения.',
+      section:'team'
+    },
+    {
+      icon:'🙂',title:'Профиль',
+      text:'В профиле можно загрузить и обрезать свою фотографию. Настройки вашего аккаунта привязаны к персональному PIN.',
+      section:'profile'
+    }
+  ];
+  if(e.messenger_access){
+    steps.splice(5,0,{
+      icon:'💬',title:'Чаты',
+      text:'В мессенджере можно переписываться с коллегами, создавать групповые чаты, добавлять участников, переименовывать чат и выходить из него.',
+      section:'messenger'
+    });
+  }
+  return steps;
+}
+function capabilityTutorialSteps(keys,e){
+  const steps=[];
+  for(const key of keys){
+    if(key==='manager_full'){
+      steps.push({
+        icon:'🛠️',title:'Кабинет управляющего',
+        text:'У вас появился полный административный доступ. Вкладка «Управление» содержит сотрудников, расширенные настройки, диагностику, архив и журнал действий.',
+        section:'home'
+      });
+    }else if(key==='news_create'){
+      steps.push({
+        icon:'➕',title:'Вы можете создавать новости',
+        text:'Откройте раздел «Новости» — справа от заголовка будет кнопка «+». Через неё новость можно опубликовать сразу, не заходя в «Управление».',
+        section:'news',quick:'news'
+      });
+    }else if(key==='general_tasks_create'){
+      steps.push({
+        icon:'➕',title:'Вы можете создавать общие задания',
+        text:'В разделе «Задания» нажмите «+» и выберите «Общее». Такое задание увидит вся команда, а push придёт всем подписанным устройствам.',
+        section:'tasks',quick:'tasks'
+      });
+    }else if(key==='individual_tasks_create'){
+      steps.push({
+        icon:'🎯',title:'Вы можете назначать личные задания',
+        text:'В разделе «Задания» нажмите «+» и выберите «Индивидуальное». Затем выберите сотрудника, срок и количество баллов.',
+        section:'tasks',quick:'tasks'
+      });
+    }else if(key==='prizes_create'){
+      steps.push({
+        icon:'🎁',title:'Вы можете создавать призы',
+        text:'В разделе «Призы» появилась кнопка «+». Укажите название, стоимость в баллах, описание и при необходимости фотографию.',
+        section:'prizes',quick:'prizes'
+      });
+    }else if(key==='competition_manage'){
+      steps.push({
+        icon:'🏆',title:'Вы можете управлять конкурсами',
+        text:'В разделе «Конкурс» кнопка «+» открывает настройки конкурса и позволяет добавлять конкурсные задания.',
+        section:'competition',quick:'competition'
+      });
+    }else if(key==='achievements_manage'){
+      steps.push({
+        icon:'⭐',title:'Управление достижениями',
+        text:'У вас появилось право создавать достижения. Расширенное управление доступно в вашей панели управления.',
+        section:'home'
+      });
+    }else if(key==='permissions_manage'){
+      steps.push({
+        icon:'🔐',title:'Выдача прав сотрудникам',
+        text:'Теперь вы можете назначать другим сотрудникам права на создание новостей, заданий, конкурсов, призов и другие функции. Это находится в административной панели.',
+        section:'home'
+      });
+    }else if(key==='staff_panel' && !steps.some(s=>s.title.includes('прав'))){
+      steps.push({
+        icon:'⚙️',title:'Новые управленческие функции',
+        text:'В вашем аккаунте появились дополнительные служебные возможности. Они доступны в соответствующих разделах через кнопку «+» и в панели управления.',
+        section:'home'
+      });
+    }else if(key==='messenger'){
+      steps.push({
+        icon:'💬',title:'Вам открыт мессенджер',
+        text:'Теперь у вас есть раздел «Чаты». Можно писать коллегам, участвовать в групповых чатах и управлять участниками.',
+        section:'messenger'
+      });
+    }
+  }
+  return steps;
+}
+
+let tutorialState={steps:[],index:0,employeeId:null,mode:'base',pendingCapabilities:null};
+
+function closeTutorial(saveProgress=false){
+  $('#tutorialOverlay')?.classList.remove('open');
+  document.body.classList.remove('tutorial-open');
+  clearTutorialSpotlight();
+  if(saveProgress && tutorialState.employeeId){
+    if(tutorialState.mode==='base')markTutorialSeen(tutorialState.employeeId);
+    if(tutorialState.pendingCapabilities)storeCapabilityMap(tutorialState.employeeId,tutorialState.pendingCapabilities);
+  }
+}
+function clearTutorialSpotlight(){
+  document.querySelectorAll('.tutorial-highlight').forEach(el=>el.classList.remove('tutorial-highlight'));
+}
+function tutorialSectionKey(step){
+  const manager=tutorialEmployee()?.position==='Управляющий';
+  if(manager){
+    return ({
+      home:'home',news:'newsEmployee',tasks:'tasksEmployee',prizes:'prizesEmployee',
+      team:'teamEmployee',profile:'profileEmployee',messenger:'messengerEmployee',
+      competition:'competitionEmployee'
+    })[step.section]||'home';
+  }
+  return step.section||'home';
+}
+function navigateForTutorial(step){
+  if(!step?.section)return;
+  const e=tutorialEmployee();
+  if(e?.position==='Управляющий' && typeof renderUnifiedManager==='function'){
+    const target=tutorialSectionKey(step);
+    if(typeof umtab!=='undefined' && umtab!==target){
+      umtab=target;renderUnifiedManager();
+    }
+  }else if(typeof renderEmp==='function'){
+    const target=tutorialSectionKey(step);
+    if(typeof etab!=='undefined' && etab!==target){
+      etab=target;renderEmp();
+    }
+  }
+}
+function spotlightTutorialTarget(step){
+  clearTutorialSpotlight();
+  let target=null;
+  if(step.quick){
+    target=document.querySelector(`[onclick*="openQuickCreate('${step.quick}')"]`);
+  }
+  if(!target && step.section){
+    target=document.querySelector('.section-title-row') || document.querySelector('#app > .card') || document.querySelector('#app');
+  }
+  if(target && target.getBoundingClientRect().width>0){
+    target.classList.add('tutorial-highlight');
+    try{target.scrollIntoView({behavior:'smooth',block:'center'})}catch{}
+  }
+}
+function renderTutorialStep(){
+  const overlay=$('#tutorialOverlay'),card=$('#tutorialCard');
+  if(!overlay||!card)return;
+  const step=tutorialState.steps[tutorialState.index];
+  if(!step){finishTutorial();return}
+  navigateForTutorial(step);
+  setTimeout(()=>spotlightTutorialTarget(step),120);
+
+  const total=tutorialState.steps.length,number=tutorialState.index+1;
+  card.innerHTML=`
+    <div class="tutorial-progress"><span style="width:${Math.round(number/total*100)}%"></span></div>
+    <div class="tutorial-step-count">Шаг ${number} из ${total}</div>
+    <div class="tutorial-icon">${step.icon||'🚀'}</div>
+    <h2>${esc(step.title)}</h2>
+    <p>${esc(step.text)}</p>
+    ${step.hint?`<div class="tutorial-hint">${esc(step.hint)}</div>`:''}
+    <div class="tutorial-actions">
+      ${tutorialState.index>0?'<button class="btn light" onclick="tutorialPrev()">Назад</button>':''}
+      <button class="btn light" onclick="skipTutorial()">Пропустить</button>
+      <button class="btn red" onclick="tutorialNext()">${number===total?'Готово':'Далее'}</button>
+    </div>`;
+}
+function tutorialNext(){
+  if(tutorialState.index>=tutorialState.steps.length-1){finishTutorial();return}
+  tutorialState.index++;
+  renderTutorialStep();
+}
+function tutorialPrev(){
+  tutorialState.index=Math.max(0,tutorialState.index-1);
+  renderTutorialStep();
+}
+function finishTutorial(){
+  const id=tutorialState.employeeId;
+  if(id){
+    if(tutorialState.mode==='base')markTutorialSeen(id);
+    if(tutorialState.pendingCapabilities)storeCapabilityMap(id,tutorialState.pendingCapabilities);
+  }
+  closeTutorial(false);
+  toast('Обучение завершено');
+}
+function skipTutorial(){
+  // "Пропустить" считается осознанным завершением, чтобы не показывать его при каждом открытии.
+  finishTutorial();
+}
+function beginTutorial(steps,mode,currentCapabilities){
+  const e=tutorialEmployee();if(!e||!steps?.length)return;
+  tutorialState={steps,index:0,employeeId:e.id,mode,pendingCapabilities:currentCapabilities||null};
+  $('#tutorialOverlay')?.classList.add('open');
+  document.body.classList.add('tutorial-open');
+  renderTutorialStep();
+}
+function offerTutorial(steps,mode,currentCapabilities){
+  const e=tutorialEmployee();if(!e||!steps?.length)return;
+  const title=mode==='base'?'Хотите быстро освоить сайт?':'У вас появились новые возможности';
+  const text=mode==='base'
+    ?'Проведём короткое пошаговое обучение по функциям, доступным именно вашему аккаунту.'
+    :`Доступ открыт: ${steps.map(s=>s.title).join(', ')}. Показать, как этим пользоваться?`;
+  const modal=$('#tutorialOffer');
+  if(!modal)return;
+  modal.innerHTML=`<div class="tutorial-offer-card">
+    <div class="tutorial-icon">${mode==='base'?'🚀':'✨'}</div>
+    <h2>${esc(title)}</h2>
+    <p>${esc(text)}</p>
+    <div class="tutorial-actions">
+      <button class="btn light" onclick="dismissTutorialOffer('${mode}')">Позже</button>
+      <button class="btn red" onclick="acceptTutorialOffer()">Начать обучение</button>
+    </div>
+  </div>`;
+  modal.classList.add('open');
+  document.body.classList.add('tutorial-open');
+  tutorialState={steps,index:0,employeeId:e.id,mode,pendingCapabilities:currentCapabilities||null};
+}
+function dismissTutorialOffer(mode){
+  $('#tutorialOffer')?.classList.remove('open');
+  document.body.classList.remove('tutorial-open');
+  // Preserve capability snapshot even if training is postponed, but store pending keys separately.
+  if(tutorialState.employeeId && tutorialState.pendingCapabilities){
+    if(mode==='base'){
+      localStorage.setItem(tutorialStorageKey(tutorialState.employeeId,'base-offered'),'1');
+    }else{
+      localStorage.setItem(
+        tutorialStorageKey(tutorialState.employeeId,'pending-new'),
+        JSON.stringify(newlyGrantedCapabilities(tutorialState.employeeId,tutorialState.pendingCapabilities))
+      );
+    }
+  }
+}
+function acceptTutorialOffer(){
+  $('#tutorialOffer')?.classList.remove('open');
+  const stateCopy={...tutorialState};
+  beginTutorial(stateCopy.steps,stateCopy.mode,stateCopy.pendingCapabilities);
+}
+async function evaluateTutorialForCurrentUser(){
+  const e=tutorialEmployee();if(!e?.id)return;
+  const current=employeeCapabilityMap(e);
+  const baseDone=tutorialSeen(e.id);
+  const baseOffered=localStorage.getItem(tutorialStorageKey(e.id,'base-offered'))==='1';
+
+  if(!baseDone && !baseOffered){
+    offerTutorial(baseTutorialSteps(e),'base',current);
+    return;
+  }
+
+  const pendingRaw=localStorage.getItem(tutorialStorageKey(e.id,'pending-new'));
+  let pending=[];
+  try{pending=pendingRaw?JSON.parse(pendingRaw):[]}catch{}
+  const newlyGranted=[...new Set([...pending,...newlyGrantedCapabilities(e.id,current)])]
+    .filter(k=>current[k]);
+
+  if(baseDone && newlyGranted.length){
+    localStorage.removeItem(tutorialStorageKey(e.id,'pending-new'));
+    const steps=capabilityTutorialSteps(newlyGranted,e);
+    if(steps.length){
+      offerTutorial(steps,'permissions',current);
+      return;
+    }
+  }
+
+  // Baseline only after initial training is complete. This enables later permission-change detection.
+  if(baseDone)storeCapabilityMap(e.id,current);
+}
+function resetMyTutorial(){
+  const e=tutorialEmployee();if(!e)return;
+  ['base-complete','base-offered','capabilities','pending-new'].forEach(k=>localStorage.removeItem(tutorialStorageKey(e.id,k)));
+  toast('Обучение сброшено. Оно появится при следующем входе.');
+}
 
 function currentEmployee(){
   return state?.personal?.employee||state?.employee||null;
@@ -954,7 +1312,7 @@ ${homeNewsHtml(state.news)}
 ${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):`<p>${esc(T('home.no_personal_tasks','Активных индивидуальных заданий сейчас нет.'))}</p>`}
 </div>
 <div id="pushHomeCard" class="card notify-card" data-ui-block="home.notifications"><h3>🔔 Разрешить уведомления</h3><p class="muted">Включите уведомления, чтобы получать новости, новые задания, конкурсы и сообщения из внутреннего мессенджера.</p><div class="row"><button class="btn" onclick="enablePush()">Включить уведомления</button><button class="btn light" onclick="testPush()">Проверить доставку</button></div><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
-<div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,team:`<div id="teamDirectory"></div>`,news:`<div data-ui-block="section.news">${quickSectionHeader(T('section.news_title','Новости'),'news','Создать новость')}${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks">${quickSectionHeader(T('section.tasks_title','Задания'),'tasks','Создать задание')}<div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes">${quickSectionHeader(T('section.prizes_title','Призы'),'prizes','Создать приз')}${state.prizes.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}</div>`,messenger:`<div data-ui-block="section.messenger"><div id="messengerRoot"></div></div>`,staff:`<div id="staffRoot"></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(e.messenger_access?[['messenger',T('tab.messenger','Чаты')]]:[]),...(hasStaffRights(e)?[['staff','Управление']]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='messenger')setTimeout(()=>loadMessenger(),30);else stopMessengerPolling();if(etab==='staff')setTimeout(()=>loadStaffPanel(),30);if(etab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(etab==='team')setTimeout(()=>loadTeamDirectory(),30)}
+<div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,team:`<div id="teamDirectory"></div>`,news:`<div data-ui-block="section.news">${quickSectionHeader(T('section.news_title','Новости'),'news','Создать новость')}${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks">${quickSectionHeader(T('section.tasks_title','Задания'),'tasks','Создать задание')}<div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes">${quickSectionHeader(T('section.prizes_title','Призы'),'prizes','Создать приз')}${state.prizes.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}</div>`,messenger:`<div data-ui-block="section.messenger"><div id="messengerRoot"></div></div>`,staff:`<div id="staffRoot"></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button><h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(e.messenger_access?[['messenger',T('tab.messenger','Чаты')]]:[]),...(hasStaffRights(e)?[['staff','Управление']]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='messenger')setTimeout(()=>loadMessenger(),30);else stopMessengerPolling();if(etab==='staff')setTimeout(()=>loadStaffPanel(),30);if(etab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(etab==='team')setTimeout(()=>loadTeamDirectory(),30);scheduleTutorialEvaluation()}
 
 
 function hasStaffRights(e){return !!(e.can_manage_tasks||e.can_assign_individual||e.can_manage_news||e.can_manage_competition||e.can_manage_prizes||e.can_manage_achievements||e.can_manage_permissions)}
@@ -1531,7 +1889,7 @@ function renderUnifiedManager(){
     messengerEmployee:`<div id="messengerRoot"></div>`,
     competitionEmployee:`${quickSectionHeader('Конкурс','competition','Управлять конкурсом')}${p.competition?`<div class="card hero"><h2>${esc(p.competition.title)}</h2><p>${esc(p.competition.description)}</p><div class=score>${p.competition.my_score}</div><b>Ваше место: ${p.competition.my_place||'—'}</b></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,
     ratingEmployee:`<h2>Рейтинг команды</h2><div class=card>${(p.ranking||[]).map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,
-    profileEmployee:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button></div>`,
+    profileEmployee:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button></div>`,
     employees:empAdmin(),
     tasksAdmin:crudList('Задания',state.tasks,'task'),
     individualAdmin:individualAdmin(),
@@ -1556,7 +1914,7 @@ function renderUnifiedManager(){
   animateSection();applyBlockVisibility(document);applyRemovedElements(document);
   if(umtab==='messengerEmployee')setTimeout(()=>loadMessenger(),30);
   if(umtab==='messengerAdmin')setTimeout(()=>loadMessengerAdmin(),30);
-  if(umtab==='interfaceAdmin')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);if(umtab==='diagnosticsAdmin')setTimeout(()=>loadDiagnostics(),30);if(umtab==='auditAdmin')setTimeout(()=>loadAuditLog(),30);if(umtab==='safetyAdmin')setTimeout(()=>loadSafetyCenter(),30);if(umtab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(umtab==='teamEmployee')setTimeout(()=>loadTeamDirectory(),30);
+  if(umtab==='interfaceAdmin')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);if(umtab==='diagnosticsAdmin')setTimeout(()=>loadDiagnostics(),30);if(umtab==='auditAdmin')setTimeout(()=>loadAuditLog(),30);if(umtab==='safetyAdmin')setTimeout(()=>loadSafetyCenter(),30);if(umtab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(umtab==='teamEmployee')setTimeout(()=>loadTeamDirectory(),30);scheduleTutorialEvaluation();
 }
 async function saveUnifiedSettings(){
   await api('admin/settings',{method:'POST',body:JSON.stringify({season:$('#season').value,level_step:+$('#levelstep').value,manager_pin:null})});
