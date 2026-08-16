@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.0.7';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.0.8';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -89,41 +89,55 @@ window.addEventListener('appinstalled',()=>{
 
 
 
-function goHomeFromLogo(){
+async function goHomeFromLogo(){
   try{closeMobileMenu?.()}catch{}
   try{closeManageMenu?.()}catch{}
 
-  const managerEmployee =
-    state?.personal?.employee ||
-    state?.employee ||
-    null;
+  // If a user is authenticated, resolve the real employee from the server
+  // rather than relying on whatever state shape the current admin section has.
+  if(token && (role==='employee'||role==='supervisor')){
+    try{
+      const personal=await api('me');
 
-  const isUnifiedManager =
-    managerEmployee?.position==='Управляющий' ||
-    (typeof umtab!=='undefined' && state?.personal?.employee);
+      if(personal?.employee?.position==='Управляющий'){
+        const admin=await api('admin/state');
+        state={...admin,personal};
+        umtab='home';
 
-  if(isUnifiedManager && typeof renderUnifiedManager==='function'){
-    if(typeof umtab!=='undefined')umtab='home';
-    const app=$('#app');
-    if(app){
-      app.classList.remove('section-leaving','section-entering');
-      transitionToSection(()=>renderUnifiedManager());
-    }else{
-      renderUnifiedManager();
-    }
-    return;
-  }
+        const app=$('#app');
+        if(app){
+          app.classList.remove('section-leaving','section-entering');
+          app.style.opacity='1';
+          app.style.transform='';
+          app.style.filter='';
+        }
 
-  if(state?.employee && typeof renderEmp==='function'){
-    if(typeof etab!=='undefined')etab='home';
-    const app=$('#app');
-    if(app){
-      app.classList.remove('section-leaving','section-entering');
-      transitionToSection(()=>renderEmp());
-    }else{
+        renderUnifiedManager();
+        window.scrollTo({top:0,behavior:'smooth'});
+        return;
+      }
+
+      // Normal employee.
+      state=personal;
+      etab='home';
+      const app=$('#app');
+      if(app){
+        app.classList.remove('section-leaving','section-entering');
+        app.style.opacity='1';
+        app.style.transform='';
+        app.style.filter='';
+      }
       renderEmp();
+      window.scrollTo({top:0,behavior:'smooth'});
+      return;
+    }catch(e){
+      console.error('logo home navigation failed',e);
+      toast(e.message||'Не удалось открыть главную');
+      return;
     }
   }
+
+  // Not authorized: stay on the PIN screen.
 }
 
 function openMobileMenu(){
