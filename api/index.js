@@ -6,7 +6,7 @@ const sql = neon(process.env.DATABASE_URL);
 const SECRET = process.env.APP_SECRET || 'CHANGE_ME_IN_VERCEL';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const APP_VERSION = '9.3.6';
+const APP_VERSION = '9.4.0';
 const APP_ENV = process.env.VERCEL_ENV || process.env.APP_ENV || 'local';
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
   
@@ -113,6 +113,48 @@ async function broadcastPush(payload,context='broadcast'){
     JOIN employees e ON e.id=ps.employee_id
     WHERE e.active=true AND e.archived_at IS NULL`)[0]?.count||0;
   return result;
+}
+
+
+async function sendScheduledNewsReminders(){
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(new Date());
+  const vals=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  const base=new Date(Date.UTC(Number(vals.year),Number(vals.month)-1,Number(vals.day)));
+  base.setUTCDate(base.getUTCDate()+1);
+  const tomorrowIso=`${base.getUTCFullYear()}-${String(base.getUTCMonth()+1).padStart(2,'0')}-${String(base.getUTCDate()).padStart(2,'0')}`;
+
+  const rows=await sql`
+    SELECT id,title,event_date
+    FROM news
+    WHERE active=true
+      AND archived_at IS NULL
+      AND event_date=${tomorrowIso}::date
+      AND reminder_sent_at IS NULL
+    ORDER BY id`;
+
+  const results=[];
+  for(const n of rows){
+    const push=await broadcastPush({
+      title:'Напоминание о событии 📅',
+      body:`Завтра: ${n.title}`,
+      url:'/?open=news',
+      tag:'news-reminder-'+n.id
+    },'news-reminder');
+    await sql`UPDATE news SET reminder_sent_at=now() WHERE id=${n.id}`;
+    results.push({id:n.id,title:n.title,push});
+  }
+
+  try{
+    await setSystemStatus('news_reminders',{
+      event_date:tomorrowIso,
+      processed:results.length,
+      at:new Date().toISOString()
+    });
+  }catch{}
+
+  return {ok:true,event_date:tomorrowIso,processed:results.length,results}
 }
 
 
@@ -277,6 +319,7 @@ async function init(){
 
  await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS onboarding_offered_at timestamptz`;
  await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS onboarding_capabilities jsonb default '{}'::jsonb`;
+ await sql`ALTER TABLE news ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz`;
  await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
  await sql`ALTER TABLE prizes ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
@@ -411,6 +454,7 @@ function hasAnyStaffPermission(p){
 module.exports=async(req,res)=>{
  try{
   await init(); const path=(req.query.path||'').toString(); const u=auth(req);
+  if(path==='messenger'||path.startsWith('messenger/')||path.startsWith('admin/messenger')||path.startsWith('staff/messenger'))return ok(res,{error:'Мессенджер удалён'},404);
   if(req.method==='GET'&&path==='public/employees'){return ok(res,await sql`SELECT id,name,position,photo,gender,birthday,access_role,team_member,messenger_access,last_seen FROM employees WHERE active=true AND archived_at IS NULL ORDER BY name`)}
   if(req.method==='POST'&&path==='login/employee'){const b=await body(req); const rows=await sql`SELECT * FROM employees WHERE id=${b.id} AND active=true`; if(!rows.length||!(await bcrypt.compare(String(b.pin||''),rows[0].pin_hash))) return ok(res,{error:'Неверный PIN'},401); return ok(res,{token:token({role:(rows[0].access_role==='supervisor'?'supervisor':'employee'),id:rows[0].id}),access_role:rows[0].access_role||'employee'})}
   if(req.method==='POST'&&path==='login/manager'){
@@ -426,6 +470,13 @@ module.exports=async(req,res)=>{
   }
   if(req.method==='GET'&&path==='content/removed-elements'){
     return ok(res,await sql`SELECT id,element_type,match_text FROM ui_removed_elements WHERE active=true ORDER BY id`)
+  }
+
+
+  if((req.method==='GET'||req.method==='POST')&&path==='cron/news-reminders'){
+    const secret=process.env.CRON_SECRET;
+    if(secret && req.headers.authorization!==`Bearer ${secret}`)return ok(res,{error:'Unauthorized'},401);
+    return ok(res,await sendScheduledNewsReminders())
   }
 
   if(req.method==='GET'&&path==='cron/birthdays'){
@@ -1078,7 +1129,7 @@ if(req.method==='GET'&&path==='admin/state'){const [employees,tasks,prizes,achie
     await logAction(u.id,'news.create','news',r[0].id,{title:b.title,category:b.category});
     return ok(res,{ok:true,id:r[0].id,push})
   }
-  if(req.method==='PUT'&&path==='admin/news'){await sql`UPDATE news SET title=${b.title},body=${b.body||''},category=${b.category||'Важно'},event_date=${b.event_date||null},pinned=${!!b.pinned},requires_ack=${!!b.requires_ack},active=${b.active!==false},image=COALESCE(${b.image||null},image) WHERE id=${b.id}`;return ok(res,{ok:true})}
+  if(req.method==='PUT'&&path==='admin/news'){await sql`UPDATE news SET title=${b.title},body=${b.body||''},category=${b.category||'Важно'},event_date=${b.event_date||null},reminder_sent_at=NULL,pinned=${!!b.pinned},requires_ack=${!!b.requires_ack},active=${b.active!==false},image=COALESCE(${b.image||null},image) WHERE id=${b.id}`;return ok(res,{ok:true})}
   if(req.method==='DELETE'&&path==='admin/news'){await sql`UPDATE news SET archived_at=now(),active=false WHERE id=${b.id}`;await logAction(u.id,'archive','news',b.id,{});return ok(res,{ok:true,archived:true})}
 
   if(req.method==='POST'&&path==='admin/individual-tasks'){

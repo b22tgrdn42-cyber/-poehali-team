@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/birthdays",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/news-reminders",
+      "schedule": "5 7 * * *"
     }
   ]
 }

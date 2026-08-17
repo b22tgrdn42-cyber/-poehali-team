@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.3.6';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.4.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -300,13 +300,12 @@ function renderMobileMenu(){
     const e=p.employee||state.employee||state.personal?.employee;
     const main=[
       ['home','Главная'],['teamEmployee','Команда'],['newsEmployee','Новости'],['tasksEmployee','Задания'],['prizesEmployee','Призы'],
-      ...(e?.messenger_access?[['messengerEmployee','Чаты']]:[]),
       ['competitionEmployee','Конкурс'],['ratingEmployee','Рейтинг'],['profileEmployee','Профиль']
     ];
     const admin=[
       ['employees','Сотрудники'],['tasksAdmin','Общие задания'],['individualAdmin','Индивидуальные задания'],
       ['prizesAdmin','Призы'],['achievementsAdmin','Достижения'],['newsAdmin','Новости'],
-      ['competitionAdmin','Конкурс'],['messengerAdmin','Мессенджер'],['historyAdmin','История'],
+      ['competitionAdmin','Конкурс'],['historyAdmin','История'],
       ['interfaceAdmin','Интерфейс'],['diagnosticsAdmin','Диагностика'],['auditAdmin','Журнал действий'],['safetyAdmin','Архив и резерв'],['settingsAdmin','Настройки']
     ];
     html+=`<div class=mobile-menu-section-title>Разделы</div>${main.map(x=>`<button class="mobile-menu-item ${umtab===x[0]?'active':''}" onclick="mobileNavigate('${x[0]}')">${x[1]}</button>`).join('')}`;
@@ -316,7 +315,6 @@ function renderMobileMenu(){
     const main=[
       ['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],
       ['prizes',T('tab.prizes','Призы')],
-      ...(e.messenger_access?[['messenger',T('tab.messenger','Чаты')]]:[]),
       ...(hasStaffRights?.(e)?[['staff','Управление']]:[]),
       ['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]
     ];
@@ -462,7 +460,6 @@ function employeeCapabilityMap(e=tutorialEmployee()){
   if(!e)return {};
   const manager=e.position==='Управляющий';
   return {
-    messenger:!!e.messenger_access,
     staff_panel:!!(manager||hasStaffRights?.(e)),
     news_create:!!(manager||e.can_manage_news),
     general_tasks_create:!!(manager||e.can_manage_tasks),
@@ -492,7 +489,6 @@ function newlyGrantedCapabilities(employeeId,current){
 }
 function capabilityLabel(key){
   return ({
-    messenger:'Чаты',
     staff_panel:'Панель управления',
     news_create:'Создание новостей',
     general_tasks_create:'Создание общих заданий',
@@ -542,13 +538,6 @@ function baseTutorialSteps(e){
       section:'profile'
     }
   ];
-  if(e.messenger_access){
-    steps.splice(5,0,{
-      icon:'💬',title:'Чаты',
-      text:'В мессенджере можно переписываться с коллегами, создавать групповые чаты, добавлять участников, переименовывать чат и выходить из него.',
-      section:'messenger'
-    });
-  }
   return steps;
 }
 function capabilityTutorialSteps(keys,e){
@@ -607,14 +596,7 @@ function capabilityTutorialSteps(keys,e){
         icon:'⚙️',title:'Новые управленческие функции',
         text:'В вашем аккаунте появились дополнительные служебные возможности. Они доступны в соответствующих разделах через кнопку «+» и в панели управления.',
         section:'home'
-      });
-    }else if(key==='messenger'){
-      steps.push({
-        icon:'💬',title:'Вам открыт мессенджер',
-        text:'Теперь у вас есть раздел «Чаты». Можно писать коллегам, участвовать в групповых чатах и управлять участниками.',
-        section:'messenger'
-      });
-    }
+      });}
   }
   return steps;
 }
@@ -642,7 +624,7 @@ function tutorialSectionKey(step){
   if(manager){
     return ({
       home:'home',news:'newsEmployee',tasks:'tasksEmployee',prizes:'prizesEmployee',
-      team:'teamEmployee',profile:'profileEmployee',messenger:'messengerEmployee',
+      team:'teamEmployee',profile:'profileEmployee',
       competition:'competitionEmployee'
     })[step.section]||'home';
   }
@@ -667,7 +649,6 @@ function spotlightTutorialTarget(step){
     news:'Новости',
     tasks:'Задания',
     prizes:'Призы',
-    messenger:'Чаты',
     competition:'Конкурс',
     rating:'Рейтинг',
     profile:'Профиль'
@@ -918,6 +899,7 @@ async function openQuickCreate(kind){
       <textarea id=qcNewsBody class=field placeholder="Текст новости"></textarea>
       <label>Дата мероприятия (необязательно)</label>
       <input id=qcNewsDate class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ">
+      <div class=file-note>Если указана дата мероприятия, за 1 день до неё всем сотрудникам автоматически придёт push-напоминание.</div>
       <label>Фото (необязательно)</label><input id=qcNewsImg class=field type=file accept="image/*">
       <label class=toggle-line><input id=qcNewsPinned type=checkbox><span>Закрепить</span></label>
       <label class=toggle-line><input id=qcNewsAck type=checkbox><span>Требовать ознакомления</span></label>
@@ -1858,8 +1840,8 @@ ${homeNewsHtml(state.news)}
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
 ${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):`<p>${esc(T('home.no_personal_tasks','Активных индивидуальных заданий сейчас нет.'))}</p>`}
 </div>
-<div id="pushHomeCard" class="card notify-card" data-ui-block="home.notifications"><h3>🔔 Разрешить уведомления</h3><p class="muted">Включите уведомления, чтобы получать новости, новые задания, конкурсы и сообщения из внутреннего мессенджера.</p><div class="row"><button class="btn" onclick="enablePush()">Включить уведомления</button><button class="btn light" onclick="testPush()">Проверить доставку</button></div><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
-<div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,team:`<div id="teamDirectory"></div>`,news:`<div data-ui-block="section.news">${quickSectionHeader(T('section.news_title','Новости'),'news','Создать новость')}${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks">${quickSectionHeader(T('section.tasks_title','Задания'),'tasks','Создать задание')}<div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes">${quickSectionHeader(T('section.prizes_title','Призы'),'prizes','Создать приз')}${state.prizes.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}</div>`,messenger:`<div data-ui-block="section.messenger"><div id="messengerRoot"></div></div>`,staff:`<div id="staffRoot"></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}<h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(e.messenger_access?[['messenger',T('tab.messenger','Чаты')]]:[]),...(hasStaffRights(e)?[['staff','Управление']]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='messenger')setTimeout(()=>loadMessenger(),30);else stopMessengerPolling();if(etab==='staff')setTimeout(()=>loadStaffPanel(),30);if(etab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(etab==='team')setTimeout(()=>loadTeamDirectory(),30);if(etab==='profile')setTimeout(()=>refreshProfilePushStatus(),60);scheduleTutorialEvaluation()}
+<div id="pushHomeCard" class="card notify-card" data-ui-block="home.notifications"><h3>🔔 Разрешить уведомления</h3><p class="muted">Включите уведомления, чтобы получать новости, новые задания, конкурсы и важные события команды.</p><div class="row"><button class="btn" onclick="enablePush()">Включить уведомления</button><button class="btn light" onclick="testPush()">Проверить доставку</button></div><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
+<div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,team:`<div id="teamDirectory"></div>`,news:`<div data-ui-block="section.news">${quickSectionHeader(T('section.news_title','Новости'),'news','Создать новость')}${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks">${quickSectionHeader(T('section.tasks_title','Задания'),'tasks','Создать задание')}<div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes">${quickSectionHeader(T('section.prizes_title','Призы'),'prizes','Создать приз')}${state.prizes.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}</div>`,messenger:`<div data-ui-block="section.messenger"><div id="messengerRoot"></div></div>`,staff:`<div id="staffRoot"></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}<h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(hasStaffRights(e)?[['staff','Управление']]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='staff')setTimeout(()=>loadStaffPanel(),30);if(etab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(etab==='team')setTimeout(()=>loadTeamDirectory(),30);if(etab==='profile')setTimeout(()=>refreshProfilePushStatus(),60);scheduleTutorialEvaluation()}
 
 
 function hasStaffRights(e){return !!(e.can_manage_tasks||e.can_assign_individual||e.can_manage_news||e.can_manage_competition||e.can_manage_prizes||e.can_manage_achievements||e.can_manage_permissions)}
@@ -2406,7 +2388,6 @@ function renderUnifiedManager(){
     ['newsEmployee','Новости'],
     ['tasksEmployee','Задания'],
     ['prizesEmployee','Призы'],
-    ...(e.messenger_access?[['messengerEmployee','Чаты']]:[]),
     ['competitionEmployee','Конкурс'],
     ['ratingEmployee','Рейтинг'],
     ['profileEmployee','Профиль']
@@ -2419,7 +2400,6 @@ function renderUnifiedManager(){
     ['achievementsAdmin','Достижения'],
     ['newsAdmin','Новости'],
     ['competitionAdmin','Конкурс'],
-    ['messengerAdmin','Мессенджер'],
     ['historyAdmin','История'],
     ['interfaceAdmin','Интерфейс'],
     ['diagnosticsAdmin','Диагностика'],['auditAdmin','Журнал действий'],['safetyAdmin','Архив и резерв'],['settingsAdmin','Настройки']
@@ -2433,7 +2413,6 @@ function renderUnifiedManager(){
     newsEmployee:`${quickSectionHeader('Новости','news','Создать новость')}${(p.news||[]).map(newsCard).join('')||'<div class=card>Новостей пока нет.</div>'}`,
     tasksEmployee:`${quickSectionHeader('Задания','tasks','Создать задание')}<div class=card><h3>Мои индивидуальные задания</h3>${(p.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')||'Индивидуальных заданий пока нет.'}</div><h2>Общие задания</h2>${(p.tasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points}</span></div></div>`).join('')}`,
     prizesEmployee:`${quickSectionHeader('Призы','prizes','Создать приз')}${(p.prizes||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}`,
-    messengerEmployee:`<div id="messengerRoot"></div>`,
     competitionEmployee:`${quickSectionHeader('Конкурс','competition','Управлять конкурсом')}${p.competition?`<div class="card hero"><h2>${esc(p.competition.title)}</h2><p>${esc(p.competition.description)}</p><div class=score>${p.competition.my_score}</div><b>Ваше место: ${p.competition.my_place||'—'}</b></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,
     ratingEmployee:`<h2>Рейтинг команды</h2><div class=card>${(p.ranking||[]).map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,
     profileEmployee:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}</div>`,
@@ -2444,7 +2423,6 @@ function renderUnifiedManager(){
     achievementsAdmin:achAdmin(),
     newsAdmin:newsAdmin(),
     competitionAdmin:competitionAdmin(),
-    messengerAdmin:messengerAdmin(),
     historyAdmin:`<div class=card><h2>История баллов</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`,
     interfaceAdmin:interfaceAdmin(),diagnosticsAdmin:`<div id="diagnosticsRoot"></div>`,auditAdmin:`<div id="auditRoot"></div>`,safetyAdmin:`<div id="safetyRoot"></div>`,
     settingsAdmin:`<div class=card><h2>Настройки</h2><p class=muted>Версия приложения 9.0.0</p><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><button class="btn red" onclick="saveUnifiedSettings()">Сохранить</button></div>`
@@ -2535,7 +2513,7 @@ async function restoreArchive(kind,id){
  toast('Объект восстановлен');await unifiedManager();umtab='safetyAdmin';renderUnifiedManager();setTimeout(loadSafetyCenter,30)
 }
 
-let mtab='employees';async function manager(){document.body.classList.add('authenticated');try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:`<div data-ui-block="admin.employees">${empAdmin()}</div>`,tasks:`<div data-ui-block="admin.tasks">${crudList('Задания',state.tasks,'task')}</div>`,prizes:`<div data-ui-block="admin.prizes">${crudList('Призы',state.prizes,'prize')}</div>`,achievements:`<div data-ui-block="admin.achievements">${achAdmin()}</div>`,news:`<div data-ui-block="admin.news">${newsAdmin()}</div>`,competition:`<div data-ui-block="admin.competition">${competitionAdmin()}</div>`,individual:`<div data-ui-block="admin.individual">${individualAdmin()}</div>`,messengerAdmin:`<div data-ui-block="admin.messenger">${messengerAdmin()}</div>`,interface:interfaceAdmin(),history:`<div data-ui-block="admin.history"><div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div></div>`,settings:`<div class=card data-ui-block="admin.settings"><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['messengerAdmin',T('admin.tab.messenger','Мессенджер')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager');applyBlockVisibility(document);applyRemovedElements(document);if(mtab==='interface')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);if(mtab==='messengerAdmin')setTimeout(()=>loadMessengerAdmin(),30)}
+let mtab='employees';async function manager(){document.body.classList.add('authenticated');try{state=await api('admin/state');$('#who').innerHTML=`<b>${esc(T('admin.role_label','Управляющий'))}</b> <button class="btn light" onclick="logout()">Выйти</button>`;renderMgr()}catch{logout()}}function renderMgr(){let c={employees:`<div data-ui-block="admin.employees">${empAdmin()}</div>`,tasks:`<div data-ui-block="admin.tasks">${crudList('Задания',state.tasks,'task')}</div>`,prizes:`<div data-ui-block="admin.prizes">${crudList('Призы',state.prizes,'prize')}</div>`,achievements:`<div data-ui-block="admin.achievements">${achAdmin()}</div>`,news:`<div data-ui-block="admin.news">${newsAdmin()}</div>`,competition:`<div data-ui-block="admin.competition">${competitionAdmin()}</div>`,individual:`<div data-ui-block="admin.individual">${individualAdmin()}</div>`,messengerAdmin:`<div data-ui-block="admin.messenger">${messengerAdmin()}</div>`,interface:interfaceAdmin(),history:`<div data-ui-block="admin.history"><div class=card><h2>${esc(T('profile.points_history','История баллов'))}</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div></div>`,settings:`<div class=card data-ui-block="admin.settings"><h2>Настройки</h2><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><label>Новый PIN управляющего (необязательно)</label><input id=newmpin class=field type=password><button class="btn red" onclick="saveSettings()">Сохранить</button></div>`};$('#app').innerHTML=`<div class=tabs>${[['employees',T('admin.tab.employees','Сотрудники')],['tasks',T('admin.tab.tasks','Задания')],['prizes',T('admin.tab.prizes','Призы')],['achievements',T('admin.tab.achievements','Достижения')],['news',T('admin.tab.news','Новости')],['competition',T('admin.tab.competition','Конкурс')],['individual',T('admin.tab.individual','Индивидуальные задания')],['history',T('admin.tab.history','История')],['interface',T('admin.tab.interface','Редактор интерфейса')],['settings',T('admin.tab.settings','Настройки')]].map(x=>`<button class="${mtab==x[0]?'active':''}" onclick="mtab='${x[0]}';renderMgr()">${x[1]}</button>`).join('')}</div>${c[mtab]}`;animateSection();restoreTabsScroll('manager');applyBlockVisibility(document);applyRemovedElements(document);if(mtab==='interface')setTimeout(()=>{renderReplacementList();renderRemovedElements()},30);}
 function empAdmin(){return `<div class=card>
 <h2 style="margin-bottom:6px">Сотрудники и управляющий персонал</h2>
 <p class=muted style="margin-top:0">Создание, редактирование карточек, доступы, роли, PIN-коды и участие в рейтинге.</p>
@@ -2583,7 +2561,6 @@ ${state.employees.map(e=>`<div class=emp-edit-card>
     <h4>Доступы и отображение</h4>
     <div class=permission-grid>
       <label class=toggle-line><input id="tm${e.id}" type=checkbox ${e.team_member?'checked':''}><span>Участник команды</span></label>
-      <label class=toggle-line><input id="ma${e.id}" type=checkbox ${e.messenger_access?'checked':''}><span>Доступ к мессенджеру</span></label>
     </div>
   </div>
 
@@ -2612,7 +2589,7 @@ ${state.employees.map(e=>`<div class=emp-edit-card>
     <button class="btn danger" onclick="del('employees',${e.id})">Удалить</button>
   </div>
 </div>`).join('')}`}
-async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked,messenger_access:$('#ema').checked,birthday:$('#ebday').value?dateValue('#ebday'):null})});toast('Сотрудник добавлен');manager()}
+async function addEmp(){await api('admin/employees',{method:'POST',body:JSON.stringify({name:$('#en').value,position:$('#ep').value,pin:$('#epin').value,access_role:$('#ear').value,team_member:$('#etm').checked,birthday:$('#ebday').value?dateValue('#ebday'):null})});toast('Сотрудник добавлен');manager()}
 async function points(id){let delta=+$('#d'+id).value;await api('admin/points',{method:'POST',body:JSON.stringify({employee_id:id,delta,reason:$('#r'+id).value})});pointCelebration(delta);manager()}
 async function saveEmployeeCard(id,active){
  const payload={
@@ -2623,7 +2600,6 @@ async function saveEmployeeCard(id,active){
    active,
    access_role:$('#ar'+id).value,
    team_member:$('#tm'+id).checked,
-   messenger_access:$('#ma'+id).checked,
    can_manage_tasks:$('#ptm'+id).checked,
    can_assign_individual:$('#pim'+id).checked,
    can_manage_news:$('#pnm'+id).checked,
@@ -2654,7 +2630,7 @@ async function toggleEmployeeActive(id,active){
  const e=state.employees.find(x=>x.id===id);if(!e)return;
  await api('admin/employees',{method:'PUT',body:JSON.stringify({
    id,name:e.name,position:e.position,birthday:e.birthday||null,gender:e.gender||'male',active,
-   access_role:e.access_role,team_member:e.team_member,messenger_access:e.messenger_access,
+   access_role:e.access_role,team_member:e.team_member,
    can_manage_tasks:e.can_manage_tasks,can_assign_individual:e.can_assign_individual,
    can_manage_news:e.can_manage_news,can_manage_competition:e.can_manage_competition,
    can_manage_prizes:e.can_manage_prizes,can_manage_achievements:e.can_manage_achievements,
@@ -2742,13 +2718,6 @@ const UI_FIELDS=[
  ['Профиль','profile.upload_photo','Загрузка фото','Загрузить фотографию'],
  ['Профиль','profile.save_photo','Кнопка фото','Сохранить фото'],
  ['Профиль','profile.points_history','История баллов','История баллов'],
- ['Мессенджер','messenger.title','Название раздела','Чаты'],
- ['Мессенджер','messenger.search_placeholder','Поиск','Поиск'],
- ['Мессенджер','messenger.new_chat','Новый чат','Новый чат'],
- ['Мессенджер','messenger.create_group','Создать группу','Создать группу'],
- ['Мессенджер','messenger.select_chat','Пустой чат — заголовок','Выберите чат'],
- ['Мессенджер','messenger.empty_text','Пустой чат — текст','Личные и групповые сообщения команды'],
- ['Мессенджер','messenger.message_placeholder','Поле сообщения','Сообщение'],
  ['Вкладки управляющего','admin.tab.employees','Сотрудники','Сотрудники'],
  ['Вкладки управляющего','admin.tab.tasks','Задания','Задания'],
  ['Вкладки управляющего','admin.tab.prizes','Призы','Призы'],
