@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.4.0';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.4.1';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1286,6 +1286,8 @@ function authMode(){return}
 
 function selectEmployee(id,el){
  selectedEmployeeId=id;
+  try{selectedEmployeeName=(readPublicEmployeeCache()||[]).find(x=>Number(x.id)===Number(id))?.name||''}catch{selectedEmployeeName=''}
+  if(!selectedEmployeeName){try{selectedEmployeeName=arguments[1]?.querySelector('b')?.textContent?.trim()||''}catch{}}
  document.querySelectorAll('.employee-choice').forEach(x=>x.classList.remove('selected'));
  el.classList.add('selected');
  setTimeout(()=>$('#pin')?.focus(),100);
@@ -1762,12 +1764,14 @@ async function continueAfterMandatoryPush(){
 }
 
 async function showEmployeeWelcome(){
- let employeeName='';
- try{
-   const cached=readPublicEmployeeCache()||[];
-   employeeName=cached.find(x=>Number(x.id)===Number(selectedEmployeeId))?.name||'';
- }catch{}
- employeeName=employeeName||state?.employee?.name||'команду';
+ let employeeName=String(selectedEmployeeName||'').trim();
+ if(!employeeName){
+   try{
+     const cached=readPublicEmployeeCache()||[];
+     employeeName=cached.find(x=>Number(x.id)===Number(selectedEmployeeId))?.name||'';
+   }catch{}
+ }
+ employeeName=employeeName||state?.employee?.name||state?.personal?.employee?.name||'Сотрудник';
 
  const layer=document.createElement('div');
  layer.className='welcome-stage';
@@ -1795,6 +1799,12 @@ async function showEmployeeWelcome(){
 async function empLogin(){
   try{
     if(!selectedEmployeeId)return toast('Сначала выберите сотрудника');
+    if(!selectedEmployeeName){
+      try{
+        selectedEmployeeName=(readPublicEmployeeCache()||[]).find(x=>Number(x.id)===Number(selectedEmployeeId))?.name||'';
+        if(!selectedEmployeeName)selectedEmployeeName=document.querySelector(`.employee-choice[data-id="${selectedEmployeeId}"] b`)?.textContent?.trim()||'';
+      }catch{}
+    }
 
     // Start the native permission prompt immediately from the PIN button click.
     // This preserves the user gesture required by Safari/Chrome.
@@ -1815,6 +1825,8 @@ async function empLogin(){
       })
     });
 
+    if(j.employee?.name)selectedEmployeeName=j.employee.name;
+    else if(j.name)selectedEmployeeName=j.name;
     token=j.token;
     role=(j.access_role==='supervisor'?'supervisor':'employee');
     localStorage.token=token;
@@ -2519,7 +2531,7 @@ function empAdmin(){return `<div class=card>
 <p class=muted style="margin-top:0">Создание, редактирование карточек, доступы, роли, PIN-коды и участие в рейтинге.</p>
 <div class=grid3>
   <input id=en class=field placeholder="Имя сотрудника">
-  <select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option></select><label>Пол<select id=egender class=field><option value=male>Мужской</option><option value=female>Женский</option></select></label>
+  <select id=ep class=field><option>Руководитель</option><option>Управляющий</option><option>Старший официант</option><option>Шеф-бармен</option><option>Официант</option><option>Бармен</option><option>Хостес</option></select><label>Пол<select id=egender class=field><option value=male>Мужской</option><option value=female>Женский</option></select></label>
   <input id=epin class=field placeholder="Индивидуальный PIN">
   <label>Дата рождения<input id=ebday class="field date-field" type=text inputmode=numeric maxlength=10 placeholder="ДД.ММ.ГГГГ"><small class=date-help>Например: 25031990 → 25.03.1990</small></label>
 </div>
@@ -2544,7 +2556,7 @@ ${state.employees.map(e=>`<div class=emp-edit-card>
     <label>Имя<input id="name${e.id}" class=field value="${esc(e.name)}"></label>
     <label>Должность
       <select id="pos${e.id}" class=field>
-        ${['Руководитель','Управляющий','Старший официант','Шеф-бармен','Официант','Бармен'].map(p=>`<option ${e.position===p?'selected':''}>${p}</option>`).join('')}
+        ${['Руководитель','Управляющий','Старший официант','Шеф-бармен','Официант','Бармен','Хостес'].map(p=>`<option ${e.position===p?'selected':''}>${p}</option>`).join('')}
       </select>
     </label>
     <label>Уровень доступа
