@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.4.1';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.4.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1147,7 +1147,11 @@ function optimizeRenderedImages(root=document){
 }
 
 function animateSection(){
-  const app=$('#app');if(!app)return;optimizeRenderedImages(app);
+  const app=$('#app');if(!app)return;
+  app.querySelectorAll('img').forEach(img=>{
+    if(!img.classList.contains('welcome-logo')&&!img.classList.contains('auth-logo'))img.loading='lazy';
+    img.decoding='async';
+  });optimizeRenderedImages(app);
   app.classList.remove('section-entering','section-leaving');
   void app.offsetWidth;
   app.classList.add('section-entering');
@@ -1763,7 +1767,30 @@ async function continueAfterMandatoryPush(){
   if(resume)return resume();
 }
 
-async function showEmployeeWelcome(){
+async 
+let postLoginMePromise=null;
+let postLoginAdminPromise=null;
+let pushVerifiedForCurrentLogin=false;
+
+function prefetchPostLoginData(){
+  if(postLoginMePromise)return postLoginMePromise;
+  postLoginMePromise=api('me').then(data=>{
+    if(data?.employee?.position==='Управляющий' && !postLoginAdminPromise){
+      postLoginAdminPromise=api('admin/state').catch(err=>{
+        postLoginAdminPromise=null;
+        throw err;
+      });
+    }
+    return data;
+  }).catch(err=>{
+    postLoginMePromise=null;
+    throw err;
+  });
+  return postLoginMePromise;
+}
+
+function showEmployeeWelcome(){
+ prefetchPostLoginData().catch(()=>{});
  let employeeName=String(selectedEmployeeName||'').trim();
  if(!employeeName){
    try{
@@ -1840,20 +1867,36 @@ async function empLogin(){
     // and must be registered in Neon before entering the cabinet.
     const pushOK=await enforceStrictPushGate(null,false);
     if(!pushOK)return;
+    pushVerifiedForCurrentLogin=true;
 
     showEmployeeWelcome();
   }catch(e){
     toast(e.message);
   }
 }
-let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');const pushOK=await enforceStrictPushGate(null,true);if(!pushOK)return;setTimeout(ensurePushSubscription,1800);if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
+let etab='home';async function employee(){document.body.classList.add('authenticated');try{
+ const prev=Number(localStorage.getItem('lastPoints')||'NaN');
+ state=postLoginMePromise?await postLoginMePromise:await api('me');
+ postLoginMePromise=null;
+ if(!pushVerifiedForCurrentLogin){
+   const pushOK=await enforceStrictPushGate(null,true);if(!pushOK)return;
+ }else{
+   pushVerifiedForCurrentLogin=false;
+ }
+ setTimeout(ensurePushSubscription,2200);
+ if(state.employee?.position==='Управляющий'){return unifiedManager()}
+ if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);
+ localStorage.setItem('lastPoints',state.employee.points);
+ $('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;
+ renderEmp()
+}catch(e){console.error('employee load',e);logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 ${installHintHtml()}
 ${homeNewsHtml(state.news)}
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
 ${(state.individualTasks||[]).filter(x=>x.status!=='completed').length?(state.individualTasks||[]).filter(x=>x.status!=='completed').slice(0,4).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="home-task"><div class="task-head"><b>${esc(x.title)}</b><span class="pill">+${x.points}</span></div><p>${esc(x.description)}</p>${x.due_date?`<small>Срок: ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<div><b>${x.status==='submitted'?'✓ На проверке':'● Нужно выполнить'}</b></div>${x.status==='assigned'?`<button class="btn red" style="margin-top:9px" onclick="etab='tasks';renderEmp()">Открыть задание</button>`:''}</div>`).join(''):`<p>${esc(T('home.no_personal_tasks','Активных индивидуальных заданий сейчас нет.'))}</p>`}
 </div>
 <div id="pushHomeCard" class="card notify-card" data-ui-block="home.notifications"><h3>🔔 Разрешить уведомления</h3><p class="muted">Включите уведомления, чтобы получать новости, новые задания, конкурсы и важные события команды.</p><div class="row"><button class="btn" onclick="enablePush()">Включить уведомления</button><button class="btn light" onclick="testPush()">Проверить доставку</button></div><div class="notify-status" id="pushStatus">Проверяем статус…</div></div>
-<div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,team:`<div id="teamDirectory"></div>`,news:`<div data-ui-block="section.news">${quickSectionHeader(T('section.news_title','Новости'),'news','Создать новость')}${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks">${quickSectionHeader(T('section.tasks_title','Задания'),'tasks','Создать задание')}<div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes">${quickSectionHeader(T('section.prizes_title','Призы'),'prizes','Создать приз')}${state.prizes.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}</div>`,messenger:`<div data-ui-block="section.messenger"><div id="messengerRoot"></div></div>`,staff:`<div id="staffRoot"></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}<h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(hasStaffRights(e)?[['staff','Управление']]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='staff')setTimeout(()=>loadStaffPanel(),30);if(etab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(etab==='team')setTimeout(()=>loadTeamDirectory(),30);if(etab==='profile')setTimeout(()=>refreshProfilePushStatus(),60);scheduleTutorialEvaluation()}
+<div class="grid" data-ui-block="home.news_achievements"><div class="card"><h3>${esc(T('home.latest_news','Последние новости'))}</h3>${state.news.slice(0,3).map(newsCard).join('')||'Новостей пока нет'}</div><div class="card"><h3>${esc(T('home.achievements','Мои достижения'))}</h3>${state.achievements.map(a=>`<div class=listitem>${esc(a.icon)} <b>${esc(a.title)}</b><br><small>${esc(a.description)}</small></div>`).join('')||'Пока нет достижений'}</div></div>`,team:`<div id="teamDirectory"></div>`,news:`<div data-ui-block="section.news">${quickSectionHeader(T('section.news_title','Новости'),'news','Создать новость')}${state.news.map(newsCard).join('')||'<div class=card>Новостей пока нет</div>'}</div>`,tasks:`<div data-ui-block="section.tasks">${quickSectionHeader(T('section.tasks_title','Задания'),'tasks','Создать задание')}<div class=card><h3>${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h3>${(state.individualTasks||[]).length?(state.individualTasks||[]).map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class="listitem task-personal"><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span>${x.due_date?` <small>до ${new Date(x.due_date).toLocaleDateString('ru')}</small>`:''}<p><b>Статус:</b> ${x.status==='assigned'?'назначено':x.status==='submitted'?'на проверке':'выполнено'}</p>${x.status==='assigned'?`<textarea id="ic${x.id}" class=field placeholder="Комментарий к выполнению (необязательно)"></textarea><button class="btn red" onclick="submitIndividual(${x.id})">Отправить на проверку</button>`:''}</div>`).join(''):'Индивидуальных заданий пока нет.'}</div><h2>${esc(T('section.general_tasks','Общие задания'))}</h2>${state.tasks.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>+${x.points} баллов</span></div></div>`).join('')}</div>`,prizes:`<div data-ui-block="section.prizes">${quickSectionHeader(T('section.prizes_title','Призы'),'prizes','Создать приз')}${state.prizes.map(x=>`<div class=section-item>${x.image?`<img class=section-item-image src="${x.image}">`:''}<div class=card><b>${esc(x.title)}</b><p>${esc(x.description)}</p><span class=pill>${x.cost} баллов</span></div></div>`).join('')}</div>`,staff:`<div id="staffRoot"></div>`,competition:`<div data-ui-block="section.competition"><h2>Гонка экипажей</h2>${state.competition?`<div class="card hero"><h2>${esc(state.competition.title)}</h2><p>${esc(state.competition.description)}</p><div class="score">${state.competition.my_score}</div><b>Ваше место: ${state.competition.my_place||'—'}</b><p>${state.competition.starts_on||''}${state.competition.ends_on?' — '+state.competition.ends_on:''}</p></div><div class=grid><div class=card><h3>Задания</h3>${state.competition.tasks.map(t=>`<div class=listitem><b>${esc(t.title)}</b> <span class=pill>+${t.points}</span><br><small>${esc(t.description)}</small></div>`).join('')}</div><div class=card><h3>TOP команды</h3>${state.competition.board.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.score}</b></div>`).join('')}<hr><b>Уровни конкурса</b><p>🚀 На старте — 100<br>🛰 Первый космический — 250<br>🌟 На орбите — 500</p></div></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}</div>`,rating:`<div data-ui-block="section.rating"><h2>${esc(T('section.rating_title','Рейтинг команды'))}</h2><div class=card>${state.ranking.map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div></div>`,profile:`<div class=card data-ui-block="section.profile"><h2>${esc(T('section.profile_title','Мой профиль'))}</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>${esc(T('profile.upload_photo','Загрузить фотографию'))}</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}<h3>${esc(T('profile.points_history','История баллов'))}</h3>${state.history.map(h=>`<div class=listitem><b>${h.delta>0?'+':''}${h.delta}</b> — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`};$('#app').innerHTML=`<div class=tabs>${[['home',T('tab.home','Главная')],['team','Команда'],['news',T('tab.news','Новости')],['tasks',T('tab.tasks','Задания')],['prizes',T('tab.prizes','Призы')],...(hasStaffRights(e)?[['staff','Управление']]:[]),['competition',T('tab.competition','Конкурс')],['rating',T('tab.rating','Рейтинг')],['profile',T('tab.profile','Профиль')]].map(x=>`<button class="${etab==x[0]?'active':''}" onclick="saveTabsScroll('employee');etab='${x[0]}';renderEmp();if('${x[0]}'==='competition')setTimeout(()=>document.querySelector('#app')?.classList.add('launchPulse'),20)">${x[1]}</button>`).join('')}</div>${content[etab]}`;animateSection();restoreTabsScroll('employee');applyBlockVisibility(document);applyRemovedElements(document);setTimeout(()=>{if(etab==='home')refreshPushStatus()},120);if(etab==='staff')setTimeout(()=>loadStaffPanel(),30);if(etab==='home'&&deferredInstallPrompt)setTimeout(()=>{const b=$('#installAppBtn');if(b)b.style.display=''},30);if(etab==='team')setTimeout(()=>loadTeamDirectory(),30);if(etab==='profile')setTimeout(()=>refreshProfilePushStatus(),60);scheduleTutorialEvaluation()}
 
 
 function hasStaffRights(e){return !!(e.can_manage_tasks||e.can_assign_individual||e.can_manage_news||e.can_manage_competition||e.can_manage_prizes||e.can_manage_achievements||e.can_manage_permissions)}
@@ -2323,12 +2366,13 @@ function savePhoto(){startProfileCrop($('#pfile'))}
 let umtab='home';
 async function unifiedManager(){document.body.classList.add('authenticated');
   try{
-    const personal=state&&state.employee?state:await api('me');
-    const admin=await api('admin/state');
+    const personal=state&&state.employee?state:(postLoginMePromise?await postLoginMePromise:await api('me'));
+    const admin=postLoginAdminPromise?await postLoginAdminPromise:await api('admin/state');
+    postLoginMePromise=null;postLoginAdminPromise=null;
     state={...admin,personal};
     $('#who').innerHTML=`<span class=supervisor-badge>Управляющий</span> <button class="btn light" onclick="logout()">Выйти</button>`;
     renderUnifiedManager()
-  }catch(e){toast(e.message);logout()}
+  }catch(e){console.error('manager load',e);toast(e.message);logout()}
 }
 
 function toggleManageMenu(ev){
@@ -2428,15 +2472,15 @@ function renderUnifiedManager(){
     competitionEmployee:`${quickSectionHeader('Конкурс','competition','Управлять конкурсом')}${p.competition?`<div class="card hero"><h2>${esc(p.competition.title)}</h2><p>${esc(p.competition.description)}</p><div class=score>${p.competition.my_score}</div><b>Ваше место: ${p.competition.my_place||'—'}</b></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,
     ratingEmployee:`<h2>Рейтинг команды</h2><div class=card>${(p.ranking||[]).map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,
     profileEmployee:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}</div>`,
-    employees:empAdmin(),
-    tasksAdmin:crudList('Задания',state.tasks,'task'),
-    individualAdmin:individualAdmin(),
-    prizesAdmin:crudList('Призы',state.prizes,'prize'),
-    achievementsAdmin:achAdmin(),
-    newsAdmin:newsAdmin(),
-    competitionAdmin:competitionAdmin(),
+    employees:umtab==='employees'?empAdmin():'',
+    tasksAdmin:umtab==='tasksAdmin'?crudList('Задания',state.tasks,'task'):'',
+    individualAdmin:umtab==='individualAdmin'?individualAdmin():'',
+    prizesAdmin:umtab==='prizesAdmin'?crudList('Призы',state.prizes,'prize'):'',
+    achievementsAdmin:umtab==='achievementsAdmin'?achAdmin():'',
+    newsAdmin:umtab==='newsAdmin'?newsAdmin():'',
+    competitionAdmin:umtab==='competitionAdmin'?competitionAdmin():'',
     historyAdmin:`<div class=card><h2>История баллов</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`,
-    interfaceAdmin:interfaceAdmin(),diagnosticsAdmin:`<div id="diagnosticsRoot"></div>`,auditAdmin:`<div id="auditRoot"></div>`,safetyAdmin:`<div id="safetyRoot"></div>`,
+    interfaceAdmin:umtab==='interfaceAdmin'?interfaceAdmin():'',diagnosticsAdmin:`<div id="diagnosticsRoot"></div>`,auditAdmin:`<div id="auditRoot"></div>`,safetyAdmin:`<div id="safetyRoot"></div>`,
     settingsAdmin:`<div class=card><h2>Настройки</h2><p class=muted>Версия приложения 9.0.0</p><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><button class="btn red" onclick="saveUnifiedSettings()">Сохранить</button></div>`
   };
   if(!content[umtab])umtab='home';

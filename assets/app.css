@@ -2291,3 +2291,22 @@ body.push-gate-open #tutorialOffer{
     margin:0!important;
   }
 }
+
+/* V9.4.2 performance: skip layout/paint for off-screen long-list cards */
+.section-item,
+.listitem,
+.emp-edit-card{
+  content-visibility:auto;
+  contain-intrinsic-size:1px 120px;
+}
+.section-item-image,
+.newsimg{
+  content-visibility:auto;
+}
+@media(max-width:760px){
+  .section-item,
+  .listitem,
+  .emp-edit-card{
+    contain-intrinsic-size:1px 150px;
+  }
+}
