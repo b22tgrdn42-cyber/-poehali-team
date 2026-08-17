@@ -1,5 +1,5 @@
 
-const APP_VERSION='9.4.2';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
+const APP_VERSION='9.4.3';const A='/api/';let deferredInstallPrompt=null;let token=localStorage.token||'', role=localStorage.role||'', state=null, selectedEmployeeId=null, employeeTabsScroll=0, managerTabsScroll=0, messengerState=null, currentChatId=null, messengerTimer=null, replyToMessage=null, uiText={}, uiReplacements=[], uiBlocks={}, uiRemovedElements=[];
 
 
 function isStandaloneApp(){
@@ -1149,7 +1149,9 @@ function optimizeRenderedImages(root=document){
 function animateSection(){
   const app=$('#app');if(!app)return;
   app.querySelectorAll('img').forEach(img=>{
-    if(!img.classList.contains('welcome-logo')&&!img.classList.contains('auth-logo'))img.loading='lazy';
+    if(!img.classList.contains('welcome-logo')&&!img.classList.contains('auth-logo')){
+      img.loading='lazy';
+    }
     img.decoding='async';
   });optimizeRenderedImages(app);
   app.classList.remove('section-entering','section-leaving');
@@ -1216,6 +1218,27 @@ async function api(path,opt={}){
   }
   return j
 }
+const PUBLIC_EMPLOYEE_CACHE_TTL=60000;
+function getCachedPublicEmployees(){
+  try{
+    const x=JSON.parse(sessionStorage.getItem('poehali:employees-cache')||'null');
+    if(!x||Date.now()-x.time>PUBLIC_EMPLOYEE_CACHE_TTL)return null;
+    return x.value;
+  }catch{return null}
+}
+function setCachedPublicEmployees(value){
+  try{
+    sessionStorage.setItem('poehali:employees-cache',JSON.stringify({time:Date.now(),value}));
+  }catch{}
+}
+async function getPublicEmployeesFast(){
+  const cached=getCachedPublicEmployees();
+  if(cached)return cached;
+  const value=await api('public/employees');
+  setCachedPublicEmployees(value);
+  return value;
+}
+
 const PUBLIC_EMPLOYEE_CACHE_MS=60000;
 function readPublicEmployeeCache(){
   try{
@@ -1767,30 +1790,7 @@ async function continueAfterMandatoryPush(){
   if(resume)return resume();
 }
 
-async 
-let postLoginMePromise=null;
-let postLoginAdminPromise=null;
-let pushVerifiedForCurrentLogin=false;
-
-function prefetchPostLoginData(){
-  if(postLoginMePromise)return postLoginMePromise;
-  postLoginMePromise=api('me').then(data=>{
-    if(data?.employee?.position==='Управляющий' && !postLoginAdminPromise){
-      postLoginAdminPromise=api('admin/state').catch(err=>{
-        postLoginAdminPromise=null;
-        throw err;
-      });
-    }
-    return data;
-  }).catch(err=>{
-    postLoginMePromise=null;
-    throw err;
-  });
-  return postLoginMePromise;
-}
-
-function showEmployeeWelcome(){
- prefetchPostLoginData().catch(()=>{});
+async function showEmployeeWelcome(){
  let employeeName=String(selectedEmployeeName||'').trim();
  if(!employeeName){
    try{
@@ -1867,29 +1867,13 @@ async function empLogin(){
     // and must be registered in Neon before entering the cabinet.
     const pushOK=await enforceStrictPushGate(null,false);
     if(!pushOK)return;
-    pushVerifiedForCurrentLogin=true;
 
     showEmployeeWelcome();
   }catch(e){
     toast(e.message);
   }
 }
-let etab='home';async function employee(){document.body.classList.add('authenticated');try{
- const prev=Number(localStorage.getItem('lastPoints')||'NaN');
- state=postLoginMePromise?await postLoginMePromise:await api('me');
- postLoginMePromise=null;
- if(!pushVerifiedForCurrentLogin){
-   const pushOK=await enforceStrictPushGate(null,true);if(!pushOK)return;
- }else{
-   pushVerifiedForCurrentLogin=false;
- }
- setTimeout(ensurePushSubscription,2200);
- if(state.employee?.position==='Управляющий'){return unifiedManager()}
- if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);
- localStorage.setItem('lastPoints',state.employee.points);
- $('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;
- renderEmp()
-}catch(e){console.error('employee load',e);logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
+let etab='home';async function employee(){document.body.classList.add('authenticated');try{const prev=Number(localStorage.getItem('lastPoints')||'NaN');state=await api('me');const pushOK=await enforceStrictPushGate(null,true);if(!pushOK)return;setTimeout(ensurePushSubscription,2600);if(state.employee?.position==='Управляющий'){return unifiedManager()}if(Number.isFinite(prev)&&state.employee.points>prev)pointCelebration(state.employee.points-prev);localStorage.setItem('lastPoints',state.employee.points);$('#who').innerHTML=`<button class="btn light" onclick="logout()">Выйти</button>`;renderEmp()}catch{logout()}}function renderEmp(){let e=state.employee;let content={home:`<div class="card hero" data-ui-block="home.profile_summary"><div class="row"><img class="avatar" src="${e.photo||'/assets/logo.png'}"><div><h2>${esc(e.name)}</h2><div>${esc(e.position)}</div></div><div style="margin-left:auto"><div class="score">${e.points}</div><small>баллов</small></div></div></div>
 ${installHintHtml()}
 ${homeNewsHtml(state.news)}
 <div class="card home-tasks" data-ui-block="home.personal_tasks"><div class="row"><div><h2 style="margin:0">${esc(T('home.personal_tasks_title','Мои индивидуальные задания'))}</h2><div class="muted">${esc(T('home.personal_tasks_subtitle','Новые задания появляются здесь сразу после входа'))}</div></div><button class="btn red" onclick="etab='tasks';renderEmp()">${esc(T('home.all_tasks_button','Все задания'))}</button></div>
@@ -2366,13 +2350,12 @@ function savePhoto(){startProfileCrop($('#pfile'))}
 let umtab='home';
 async function unifiedManager(){document.body.classList.add('authenticated');
   try{
-    const personal=state&&state.employee?state:(postLoginMePromise?await postLoginMePromise:await api('me'));
-    const admin=postLoginAdminPromise?await postLoginAdminPromise:await api('admin/state');
-    postLoginMePromise=null;postLoginAdminPromise=null;
+    const personal=state&&state.employee?state:await api('me');
+    const admin=await api('admin/state');
     state={...admin,personal};
     $('#who').innerHTML=`<span class=supervisor-badge>Управляющий</span> <button class="btn light" onclick="logout()">Выйти</button>`;
     renderUnifiedManager()
-  }catch(e){console.error('manager load',e);toast(e.message);logout()}
+  }catch(e){toast(e.message);logout()}
 }
 
 function toggleManageMenu(ev){
@@ -2472,15 +2455,15 @@ function renderUnifiedManager(){
     competitionEmployee:`${quickSectionHeader('Конкурс','competition','Управлять конкурсом')}${p.competition?`<div class="card hero"><h2>${esc(p.competition.title)}</h2><p>${esc(p.competition.description)}</p><div class=score>${p.competition.my_score}</div><b>Ваше место: ${p.competition.my_place||'—'}</b></div>`:'<div class=card>Активного конкурса сейчас нет.</div>'}`,
     ratingEmployee:`<h2>Рейтинг команды</h2><div class=card>${(p.ranking||[]).map((x,i)=>`<div class="listitem row"><b>${i+1}</b><img class=avatar src="${x.photo||'/assets/logo.png'}"><span>${esc(x.name)}</span><b style="margin-left:auto">${x.points}</b></div>`).join('')}</div>`,
     profileEmployee:`<div class=card><h2>Мой профиль</h2><img class=avatar src="${e.photo||'/assets/logo.png'}"><p><b>${esc(e.name)}</b><br>${esc(e.position)}</p><label>Загрузить фотографию</label><input id=pfile class=field type=file accept="image/*" onchange="startProfileCrop(this)"><div class=file-note>Фото можно выбрать размером до 12 МБ. Перед сохранением откроется обрезка.</div><button class="btn red" onclick="startProfileCrop($('#pfile'))">Обрезать и сохранить фото</button><button class="btn light" onclick="resetMyTutorial()">Пройти обучение заново</button>${pushSettingsHtml()}</div>`,
-    employees:umtab==='employees'?empAdmin():'',
-    tasksAdmin:umtab==='tasksAdmin'?crudList('Задания',state.tasks,'task'):'',
-    individualAdmin:umtab==='individualAdmin'?individualAdmin():'',
-    prizesAdmin:umtab==='prizesAdmin'?crudList('Призы',state.prizes,'prize'):'',
-    achievementsAdmin:umtab==='achievementsAdmin'?achAdmin():'',
-    newsAdmin:umtab==='newsAdmin'?newsAdmin():'',
-    competitionAdmin:umtab==='competitionAdmin'?competitionAdmin():'',
+    employees:empAdmin(),
+    tasksAdmin:crudList('Задания',state.tasks,'task'),
+    individualAdmin:individualAdmin(),
+    prizesAdmin:crudList('Призы',state.prizes,'prize'),
+    achievementsAdmin:achAdmin(),
+    newsAdmin:newsAdmin(),
+    competitionAdmin:competitionAdmin(),
     historyAdmin:`<div class=card><h2>История баллов</h2>${state.history.map(h=>`<div class=listitem><b>${esc(h.employee_name||'')}</b>: ${h.delta>0?'+':''}${h.delta} — ${esc(h.reason)} <small>${new Date(h.created_at).toLocaleString('ru')}</small></div>`).join('')}</div>`,
-    interfaceAdmin:umtab==='interfaceAdmin'?interfaceAdmin():'',diagnosticsAdmin:`<div id="diagnosticsRoot"></div>`,auditAdmin:`<div id="auditRoot"></div>`,safetyAdmin:`<div id="safetyRoot"></div>`,
+    interfaceAdmin:interfaceAdmin(),diagnosticsAdmin:`<div id="diagnosticsRoot"></div>`,auditAdmin:`<div id="auditRoot"></div>`,safetyAdmin:`<div id="safetyRoot"></div>`,
     settingsAdmin:`<div class=card><h2>Настройки</h2><p class=muted>Версия приложения 9.0.0</p><label>Название сезона</label><input id=season class=field value="${esc(state.settings.season)}"><label>Баллов на уровень</label><input id=levelstep class=field type=number value="${state.settings.level_step}"><button class="btn red" onclick="saveUnifiedSettings()">Сохранить</button></div>`
   };
   if(!content[umtab])umtab='home';
